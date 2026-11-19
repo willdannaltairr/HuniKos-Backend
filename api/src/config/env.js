@@ -49,4 +49,7 @@ export const env = {
     .filter(Boolean),
   baseUrl: (process.env.BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`).replace(/\/$/, ''),
   storageDriver,
+  // Batas percobaan login per IP per 15 menit. Bisa dinaikkan saat menjalankan uji otomatis,
+  // yang butuh banyak login dari satu alamat.
+  loginRateLimit: Number(process.env.LOGIN_RATE_LIMIT ?? 10),
 }
