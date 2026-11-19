@@ -8,7 +8,15 @@ import { createBooking, listBookings, getBookingDetail, cancelBooking } from './
 
 const router = Router()
 
-router.use(authenticate, requireRole('tenant'))
+router.use(authenticate)
+
+// Detail boleh dibaca penyewa, pemilik kamar, dan admin. Kepemilikan diperiksa di service.
+router.get('/:id', validate(idParamSchema, 'params'), async (req, res) => {
+  ok(res, await getBookingDetail(req.validated.params.id, req.user), 'OK')
+})
+
+// Sisanya hanya untuk penyewa.
+router.use(requireRole('tenant'))
 
 router.post('/', validate(createBookingSchema), async (req, res) => {
   const booking = await createBooking(req.user.id, req.body)
@@ -17,10 +25,6 @@ router.post('/', validate(createBookingSchema), async (req, res) => {
 
 router.get('/', validate(bookingListQuerySchema, 'query'), async (req, res) => {
   ok(res, await listBookings({ tenantId: req.user.id, status: req.validated.query.status }), 'OK')
-})
-
-router.get('/:id', validate(idParamSchema, 'params'), async (req, res) => {
-  ok(res, await getBookingDetail(req.validated.params.id, req.user), 'OK')
 })
 
 router.patch('/:id/cancel', validate(idParamSchema, 'params'), async (req, res) => {
