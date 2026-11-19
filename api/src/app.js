@@ -7,6 +7,8 @@ import { checkConnection } from './config/db.js'
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js'
 import { UPLOAD_DIR } from './utils/storage.js'
 import { ok } from './utils/response.js'
+import authRoutes from './modules/auth/auth.routes.js'
+import userRoutes from './modules/users/users.routes.js'
 
 export function createApp() {
   const app = express()
@@ -36,6 +38,9 @@ export function createApp() {
     await checkConnection()
     ok(res, { status: 'ok' }, 'Server dan database sehat')
   })
+
+  app.use('/api/auth', authRoutes)
+  app.use('/api/users', userRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
