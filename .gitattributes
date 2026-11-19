@@ -1,0 +1,10 @@
+# Semua file teks disimpan dengan LF di repo, apa pun OS-nya.
+* text=auto eol=lf
+
+# Berkas ini harus tetap apa adanya.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.pdf binary
+*.docx binary

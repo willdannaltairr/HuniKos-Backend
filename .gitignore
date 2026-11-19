@@ -1,0 +1,27 @@
+# Dependensi
+node_modules/
+
+# Environment & rahasia
+.env
+.env.*
+!.env.example
+*.pem
+
+# Upload driver lokal (isi sementara)
+api/uploads/
+
+# Hasil build & generate
+dist/
+.next/
+coverage/
+
+# Log
+*.log
+npm-debug.log*
+
+# OS & editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
