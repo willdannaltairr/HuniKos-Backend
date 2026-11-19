@@ -12,6 +12,9 @@ import userRoutes from './modules/users/users.routes.js'
 import facilityRoutes from './modules/facilities/facilities.routes.js'
 import propertyRoutes from './modules/properties/properties.routes.js'
 import roomRoutes from './modules/rooms/rooms.routes.js'
+import bookingRoutes from './modules/bookings/bookings.routes.js'
+import maintenanceRoutes from './modules/maintenance/maintenance.routes.js'
+import { tenantPaymentRouter, tenantPaymentListRouter } from './modules/payments/payments.routes.js'
 
 export function createApp() {
   const app = express()
@@ -47,6 +50,10 @@ export function createApp() {
   app.use('/api/facilities', facilityRoutes)
   app.use('/api/properties', propertyRoutes)
   app.use('/api/rooms', roomRoutes)
+  app.use('/api/bookings', bookingRoutes)
+  app.use('/api/bookings', tenantPaymentRouter)
+  app.use('/api/payments', tenantPaymentListRouter)
+  app.use('/api/maintenance', maintenanceRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
