@@ -15,6 +15,7 @@ import roomRoutes from './modules/rooms/rooms.routes.js'
 import bookingRoutes from './modules/bookings/bookings.routes.js'
 import maintenanceRoutes from './modules/maintenance/maintenance.routes.js'
 import { tenantPaymentRouter, tenantPaymentListRouter } from './modules/payments/payments.routes.js'
+import ownerRoutes from './modules/owner/owner.routes.js'
 
 export function createApp() {
   const app = express()
@@ -54,6 +55,7 @@ export function createApp() {
   app.use('/api/bookings', tenantPaymentRouter)
   app.use('/api/payments', tenantPaymentListRouter)
   app.use('/api/maintenance', maintenanceRoutes)
+  app.use('/api/owner', ownerRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
