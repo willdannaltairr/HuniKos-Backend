@@ -65,4 +65,9 @@ export const imageRoomSchema = z.object({
   room_id: z.string().uuid('Format ID kamar tidak valid').optional(),
 })
 
+// Rute gambar memakai nama parameter `imageId`, bukan `id`, jadi butuh skema sendiri.
+export const imageIdParamSchema = z.object({
+  imageId: z.string().uuid('Format ID gambar tidak valid'),
+})
+
 export { z }

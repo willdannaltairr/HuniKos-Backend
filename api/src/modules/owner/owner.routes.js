@@ -14,6 +14,7 @@ import {
 import { listOwnerMaintenance, updateMaintenanceStatus, maintenanceStatusSchema } from '../maintenance/maintenance.service.js'
 import {
   propertySchema, roomSchema, roomUpdateSchema, decisionSchema, verifyPaymentSchema, imageRoomSchema,
+  imageIdParamSchema,
 } from './owner.schema.js'
 import { getOwnerDashboard } from './owner.dashboard.service.js'
 import {
@@ -75,13 +76,13 @@ router.post(
   },
 )
 
-router.delete('/images/:imageId', validate(idParamSchema, 'params'), async (req, res) => {
-  await deleteImage(req.user.id, req.validated.params.id)
+router.delete('/images/:imageId', validate(imageIdParamSchema, 'params'), async (req, res) => {
+  await deleteImage(req.user.id, req.validated.params.imageId)
   ok(res, null, 'Gambar berhasil dihapus')
 })
 
-router.patch('/images/:imageId/cover', validate(idParamSchema, 'params'), async (req, res) => {
-  ok(res, await setCoverImage(req.user.id, req.validated.params.id), 'Gambar dijadikan cover')
+router.patch('/images/:imageId/cover', validate(imageIdParamSchema, 'params'), async (req, res) => {
+  ok(res, await setCoverImage(req.user.id, req.validated.params.imageId), 'Gambar dijadikan cover')
 })
 
 // --- Kamar ---
