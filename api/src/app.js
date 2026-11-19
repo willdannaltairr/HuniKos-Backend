@@ -9,6 +9,9 @@ import { UPLOAD_DIR } from './utils/storage.js'
 import { ok } from './utils/response.js'
 import authRoutes from './modules/auth/auth.routes.js'
 import userRoutes from './modules/users/users.routes.js'
+import facilityRoutes from './modules/facilities/facilities.routes.js'
+import propertyRoutes from './modules/properties/properties.routes.js'
+import roomRoutes from './modules/rooms/rooms.routes.js'
 
 export function createApp() {
   const app = express()
@@ -41,6 +44,9 @@ export function createApp() {
 
   app.use('/api/auth', authRoutes)
   app.use('/api/users', userRoutes)
+  app.use('/api/facilities', facilityRoutes)
+  app.use('/api/properties', propertyRoutes)
+  app.use('/api/rooms', roomRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
