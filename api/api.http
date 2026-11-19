@@ -1,0 +1,467 @@
+@baseUrl = http://localhost:3000/api
+
+# Akun uji dari seed (kontrak bagian 10). Ganti bila memakai database sendiri.
+@adminEmail = admin@hunikos.test
+@adminPassword = Admin123!
+@ownerEmail = owner1@hunikos.test
+@ownerPassword = Owner123!
+@tenantEmail = tenant1@hunikos.test
+@tenantPassword = Tenant123!
+
+###
+# 0. KESEHATAN SERVER
+###
+
+### Health check (sekaligus membuktikan koneksi database hidup)
+GET {{baseUrl}}/health
+
+###
+# 1. AUTH & PROFIL
+###
+
+### Login admin
+# @name loginAdmin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{adminEmail}}", "password": "{{adminPassword}}" }
+
+### Login owner
+# @name loginOwner
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{ownerEmail}}", "password": "{{ownerPassword}}" }
+
+### Login tenant
+# @name loginTenant
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{tenantEmail}}", "password": "{{tenantPassword}}" }
+
+### Profil sendiri
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+
+### Ubah profil sendiri
+PUT {{baseUrl}}/users/me
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+Content-Type: application/json
+
+{ "full_name": "Budi Santoso", "phone_number": "081234567890" }
+
+### Unggah avatar
+POST {{baseUrl}}/users/me/avatar
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+Content-Type: multipart/form-data; boundary=----BatasAvatar
+
+------BatasAvatar
+Content-Disposition: form-data; name="avatar"; filename="avatar.png"
+Content-Type: image/png
+
+< ./contoh-upload/avatar.png
+------BatasAvatar--
+
+### Register tenant baru (201, role tenant)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "full_name": "Penyewa Baru",
+  "email": "penyewa.baru@hunikos.test",
+  "password": "Penyewa123",
+  "phone_number": "081298765432",
+  "role": "tenant"
+}
+
+### Register owner baru (201, role owner)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "full_name": "Pemilik Baru",
+  "email": "pemilik.baru@hunikos.test",
+  "password": "Pemilik123",
+  "phone_number": "081211112222",
+  "role": "owner"
+}
+
+###
+# 2. DATA PUBLIK
+###
+
+### Daftar fasilitas (urut nama)
+GET {{baseUrl}}/facilities
+
+### Daftar properti approved + paginasi
+GET {{baseUrl}}/properties?page=1&limit=10
+
+### Cari properti: kata kunci, kota, tipe, rentang harga, urutan
+GET {{baseUrl}}/properties?q=kos&city=Bandung&type=putri&min_price=500000&max_price=2000000&sort=price_asc&available_only=true
+
+### Filter fasilitas: kamar harus punya SEMUA fasilitas yang diminta
+GET {{baseUrl}}/properties?facility_ids=GANTI-DENGAN-UUID-FASILITAS-1,GANTI-DENGAN-UUID-FASILITAS-2
+
+### Detail properti (ganti dengan ID hasil daftar di atas)
+GET {{baseUrl}}/properties/GANTI-DENGAN-UUID-PROPERTI
+
+### Detail kamar (termasuk rentang tanggal yang tidak tersedia)
+GET {{baseUrl}}/rooms/GANTI-DENGAN-UUID-KAMAR
+
+###
+# 3. PEMILIK: PROPERTI, FOTO, DAN KAMAR
+###
+
+### Dashboard pemilik (agregasi, pendapatan bulan ini, tingkat hunian)
+GET {{baseUrl}}/owner/dashboard
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Daftar properti milik sendiri (semua status verifikasi)
+GET {{baseUrl}}/owner/properties
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Buat properti (201, status awal pending)
+# @name buatProperti
+POST {{baseUrl}}/owner/properties
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "name": "Kos Contoh API",
+  "description": "Properti contoh untuk koleksi api.http.",
+  "address": "Jl. Contoh No. 10, Sukajadi",
+  "city": "Bandung",
+  "property_type": "campur",
+  "rules": "Tamu menginap maksimal pukul 22.00.",
+  "latitude": -6.9025,
+  "longitude": 107.6188
+}
+
+### Perbarui properti (properti rejected kembali pending)
+PUT {{baseUrl}}/owner/properties/{{buatProperti.response.body.data.id}}
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "name": "Kos Contoh API (diperbarui)",
+  "address": "Jl. Contoh No. 10, Sukajadi",
+  "city": "Bandung",
+  "property_type": "campur"
+}
+
+### Unggah foto properti (maks 5 berkas; foto pertama otomatis jadi cover)
+POST {{baseUrl}}/owner/properties/{{buatProperti.response.body.data.id}}/images
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: multipart/form-data; boundary=----BatasFoto
+
+------BatasFoto
+Content-Disposition: form-data; name="images"; filename="foto-kamar.png"
+Content-Type: image/png
+
+< ./contoh-upload/foto-kamar.png
+------BatasFoto--
+
+### Jadikan sebuah foto sebagai cover
+PATCH {{baseUrl}}/owner/images/GANTI-DENGAN-UUID-GAMBAR/cover
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Hapus foto (baris database + berkas di storage)
+DELETE {{baseUrl}}/owner/images/GANTI-DENGAN-UUID-GAMBAR
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Daftar kamar milik properti (termasuk INACTIVE)
+GET {{baseUrl}}/owner/properties/{{buatProperti.response.body.data.id}}/rooms
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Buat kamar (201)
+# @name buatKamar
+POST {{baseUrl}}/owner/properties/{{buatProperti.response.body.data.id}}/rooms
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "room_number": "A1",
+  "room_type": "standard",
+  "dimensions": "3x4 m",
+  "monthly_price": 900000,
+  "max_occupants": 2,
+  "bathroom_type": "dalam",
+  "floor_number": 1
+}
+
+### Perbarui kamar + ganti seluruh daftar fasilitas
+PUT {{baseUrl}}/owner/rooms/{{buatKamar.response.body.data.id}}
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "room_number": "A1",
+  "room_type": "standard",
+  "monthly_price": 950000,
+  "max_occupants": 2,
+  "bathroom_type": "dalam",
+  "floor_number": 1,
+  "status": "MAINTENANCE",
+  "facility_ids": ["GANTI-DENGAN-UUID-FASILITAS"]
+}
+
+### Hapus kamar (409 bila sudah punya riwayat booking)
+DELETE {{baseUrl}}/owner/rooms/{{buatKamar.response.body.data.id}}
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+###
+# 4. ADMIN: VERIFIKASI PROPERTI
+###
+
+### Dashboard admin
+GET {{baseUrl}}/admin/dashboard
+Authorization: Bearer {{loginAdmin.response.body.data.token}}
+
+### Daftar properti menunggu verifikasi
+GET {{baseUrl}}/admin/properties?verification_status=pending
+Authorization: Bearer {{loginAdmin.response.body.data.token}}
+
+### Setujui properti (200)
+PATCH {{baseUrl}}/admin/properties/{{buatProperti.response.body.data.id}}/verification
+Authorization: Bearer {{loginAdmin.response.body.data.token}}
+Content-Type: application/json
+
+{ "action": "approve" }
+
+### Tolak properti (catatan wajib minimal 3 karakter, kalau tidak 422)
+PATCH {{baseUrl}}/admin/properties/{{buatProperti.response.body.data.id}}/verification
+Authorization: Bearer {{loginAdmin.response.body.data.token}}
+Content-Type: application/json
+
+{ "action": "reject", "note": "Alamat belum lengkap, mohon dilengkapi." }
+
+###
+# 5. PENYEWA: BOOKING, PEMBAYARAN, LAPORAN
+###
+
+### Buat booking (201; 409 bila bentrok, 422 bila tanggal/durasi salah)
+# @name buatBooking
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "room_id": "{{buatKamar.response.body.data.id}}",
+  "start_date": "2026-12-01",
+  "duration_months": 6,
+  "note": "Mohon kamar dekat jendela bila ada."
+}
+
+### Daftar booking sendiri (opsional filter status)
+GET {{baseUrl}}/bookings?status=PENDING
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+
+### Detail booking (boleh dibaca penyewa, pemilik kamar, dan admin)
+GET {{baseUrl}}/bookings/{{buatBooking.response.body.data.id}}
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+
+### Batalkan booking (hanya dari PENDING atau AWAITING_PAYMENT)
+PATCH {{baseUrl}}/bookings/{{buatBooking.response.body.data.id}}/cancel
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+
+###
+# 6. PEMILIK: KEPUTUSAN BOOKING DAN VERIFIKASI BAYAR
+###
+
+### Daftar booking di kamar milik sendiri
+GET {{baseUrl}}/owner/bookings?status=PENDING
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Setujui booking (PENDING -> AWAITING_PAYMENT, expires_at 24 jam, kamar RESERVED)
+PATCH {{baseUrl}}/owner/bookings/{{buatBooking.response.body.data.id}}/decision
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{ "action": "approve" }
+
+### Tolak booking (catatan wajib minimal 3 karakter)
+PATCH {{baseUrl}}/owner/bookings/{{buatBooking.response.body.data.id}}/decision
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{ "action": "reject", "owner_note": "Kamar sudah dipesan penyewa lain." }
+
+### Selesaikan booking (CONFIRMED -> COMPLETED)
+PATCH {{baseUrl}}/owner/bookings/{{buatBooking.response.body.data.id}}/complete
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Unggah bukti transfer (multipart; nominal diambil dari total_amount)
+# @name unggahBukti
+POST {{baseUrl}}/bookings/{{buatBooking.response.body.data.id}}/payments
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+Content-Type: multipart/form-data; boundary=----BatasBukti
+
+------BatasBukti
+Content-Disposition: form-data; name="proof"; filename="bukti-transfer.png"
+Content-Type: image/png
+
+< ./contoh-upload/bukti-transfer.png
+------BatasBukti--
+
+### Riwayat pembayaran sendiri
+GET {{baseUrl}}/payments
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+
+### Daftar pembayaran yang masuk ke properti sendiri
+GET {{baseUrl}}/owner/payments?status=PENDING
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Verifikasi approve (payment VERIFIED, booking CONFIRMED, kamar OCCUPIED)
+PATCH {{baseUrl}}/owner/payments/{{unggahBukti.response.body.data.id}}/verify
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{ "action": "approve" }
+
+### Verifikasi tolak (catatan wajib minimal 3 karakter; booking tetap AWAITING_PAYMENT)
+PATCH {{baseUrl}}/owner/payments/{{unggahBukti.response.body.data.id}}/verify
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{ "action": "reject", "note": "Nominal transfer belum sesuai total tagihan." }
+
+###
+# 7. LAPORAN KERUSAKAN
+###
+
+### Lapor kerusakan (hanya untuk booking CONFIRMED milik sendiri)
+# @name laporKerusakan
+POST {{baseUrl}}/maintenance
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+Content-Type: multipart/form-data; boundary=----BatasLaporan
+
+------BatasLaporan
+Content-Disposition: form-data; name="booking_id"
+
+{{buatBooking.response.body.data.id}}
+------BatasLaporan
+Content-Disposition: form-data; name="title"
+
+Keran wastafel bocor
+------BatasLaporan
+Content-Disposition: form-data; name="description"
+
+Keran wastafel menetes terus sejak kemarin malam.
+------BatasLaporan
+Content-Disposition: form-data; name="photo"; filename="foto-kamar.png"
+Content-Type: image/png
+
+< ./contoh-upload/foto-kamar.png
+------BatasLaporan--
+
+### Daftar laporan sendiri
+GET {{baseUrl}}/maintenance
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+
+### Daftar laporan di properti sendiri
+GET {{baseUrl}}/owner/maintenance?status=OPEN
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+
+### Ubah status laporan
+PATCH {{baseUrl}}/owner/maintenance/{{laporKerusakan.response.body.data.id}}
+Authorization: Bearer {{loginOwner.response.body.data.token}}
+Content-Type: application/json
+
+{ "status": "IN_PROGRESS", "owner_note": "Teknisi dijadwalkan besok pagi." }
+
+###
+# 8. ADMIN: PENGGUNA
+###
+
+### Daftar pengguna + paginasi
+GET {{baseUrl}}/admin/users?page=1&limit=10
+Authorization: Bearer {{loginAdmin.response.body.data.token}}
+
+### Filter pengguna berdasarkan peran dan status
+GET {{baseUrl}}/admin/users?role=tenant&account_status=active&q=budi
+Authorization: Bearer {{loginAdmin.response.body.data.token}}
+
+### Blokir akun (403 bila sasaran berrole admin)
+PATCH {{baseUrl}}/admin/users/GANTI-DENGAN-UUID-PENGGUNA/status
+Authorization: Bearer {{loginAdmin.response.body.data.token}}
+Content-Type: application/json
+
+{ "account_status": "suspended" }
+
+### Aktifkan kembali akun
+PATCH {{baseUrl}}/admin/users/GANTI-DENGAN-UUID-PENGGUNA/status
+Authorization: Bearer {{loginAdmin.response.body.data.token}}
+Content-Type: application/json
+
+{ "account_status": "active" }
+
+###
+# 9. KASUS NEGATIF (jalankan manual untuk membuktikan kode HTTP)
+###
+
+### Register dengan email yang sudah dipakai -> 409
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "full_name": "Email Kembar", "email": "{{tenantEmail}}", "password": "Kembar123", "role": "tenant" }
+
+### Password tanpa angka -> 422
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "full_name": "Tanpa Angka", "email": "tanpa.angka@hunikos.test", "password": "hanyahuruf", "role": "tenant" }
+
+### Register dengan role admin -> 422
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "full_name": "Calon Admin", "email": "calon.admin@hunikos.test", "password": "Admin123", "role": "admin" }
+
+### Login password salah -> 401
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{tenantEmail}}", "password": "PasswordSalah123" }
+
+### Tanpa token ke endpoint privat -> 401
+GET {{baseUrl}}/bookings
+
+### Tenant ke endpoint pemilik -> 403
+GET {{baseUrl}}/owner/dashboard
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+
+### Booking tanggal kemarin -> 422
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+Content-Type: application/json
+
+{ "room_id": "{{buatKamar.response.body.data.id}}", "start_date": "2020-01-01", "duration_months": 3 }
+
+### Booking durasi 25 bulan -> 422
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+Content-Type: application/json
+
+{ "room_id": "{{buatKamar.response.body.data.id}}", "start_date": "2026-12-01", "duration_months": 25 }
+
+### Unggah berkas teks bernama .jpg -> 415 (magic bytes tidak cocok)
+POST {{baseUrl}}/bookings/{{buatBooking.response.body.data.id}}/payments
+Authorization: Bearer {{loginTenant.response.body.data.token}}
+Content-Type: multipart/form-data; boundary=----BatasPalsu
+
+------BatasPalsu
+Content-Disposition: form-data; name="proof"; filename="palsu.jpg"
+Content-Type: image/jpeg
+
+< ./contoh-upload/bukan-gambar.txt
+------BatasPalsu--
+
+### Endpoint yang tidak ada -> 404
+GET {{baseUrl}}/tidak-ada
+
+### JSON rusak -> 400
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "rusak@hunikos.test", "password":
