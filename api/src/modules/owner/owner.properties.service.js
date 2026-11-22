@@ -11,8 +11,11 @@ const ITEM_AGGREGATES = `
 
 export async function listOwnerProperties(ownerId) {
   const { rows } = await query(
+    // Kolom detail ikut dikirim supaya form "Ubah properti" bisa mengisi ulang
+    // nilai lama; tanpa ini, menyimpan form akan mengosongkan deskripsi dan aturan.
     `SELECT p.id, p.name, p.city, p.address, p.property_type,
-            p.verification_status, p.rejection_note, ${ITEM_AGGREGATES}
+            p.description, p.rules, p.latitude, p.longitude,
+            p.verification_status, p.rejection_note, p.created_at, ${ITEM_AGGREGATES}
      FROM properties p
      LEFT JOIN rooms r ON r.property_id = p.id
      WHERE p.owner_id = $1
