@@ -68,9 +68,19 @@ export async function getBookingDetail(bookingId, viewer) {
     const allowed = viewer.role === 'admin' || viewer.id === booking.tenant_id || viewer.id === booking.owner_id
     if (!allowed) throw notFound('Booking tidak ditemukan')
 
+    // Bentuk Payment pada kontrak bagian 8 wajib memuat kode booking dan nama
+    // kamar/properti/penyewa, termasuk saat dibaca di dalam detail booking.
     const payments = await client.query(
-      `SELECT id, booking_id, amount, proof_url, status, note, verified_at, created_at
-       FROM payments WHERE booking_id = $1 ORDER BY created_at DESC`,
+      `SELECT pay.id, pay.booking_id, pay.amount, pay.proof_url, pay.status, pay.note,
+              pay.verified_at, pay.created_at,
+              b.booking_code, r.room_number, p.name AS property_name, u.full_name AS tenant_name
+       FROM payments pay
+       JOIN bookings b ON b.id = pay.booking_id
+       JOIN rooms r ON r.id = b.room_id
+       JOIN properties p ON p.id = r.property_id
+       JOIN users u ON u.id = b.tenant_id
+       WHERE pay.booking_id = $1
+       ORDER BY pay.created_at DESC`,
       [bookingId],
     )
 
