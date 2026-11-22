@@ -30,6 +30,11 @@ export function createApp() {
     origin(origin, callback) {
       // Permintaan tanpa origin (cURL, aplikasi mobile) tetap dilayani.
       if (!origin || env.corsOrigins.includes(origin)) return callback(null, true)
+      // `flutter run -d chrome` memakai port acak tiap kali dijalankan, jadi saat
+      // pengembangan semua origin localhost diterima. Produksi tetap whitelist.
+      if (!env.isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        return callback(null, true)
+      }
       return callback(null, false)
     },
   }))
