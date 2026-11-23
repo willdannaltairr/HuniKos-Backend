@@ -8,7 +8,7 @@ node_modules/
 *.pem
 
 # Upload driver lokal (isi sementara)
-api/uploads/
+uploads/
 
 # Hasil build & generate
 dist/
