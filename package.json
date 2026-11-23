@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "migrate:up": "tsx scripts/migrate.ts up",
     "migrate:down": "tsx scripts/migrate.ts down",
+    "db:local": "tsx scripts/db-local.ts",
     "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {

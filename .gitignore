@@ -10,6 +10,9 @@ node_modules/
 # Upload driver lokal (isi sementara)
 uploads/
 
+# Data cluster PostgreSQL lokal (dibuat oleh npm run db:local)
+.pgdata/
+
 # Hasil build & generate
 dist/
 .next/
