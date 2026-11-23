@@ -1,0 +1,137 @@
+erDiagram
+    users ||--o{ properties : "memiliki"
+    users ||--o{ bookings : "mengajukan"
+    users ||--o{ booking_status_histories : "mengubah"
+    users ||--o{ payments : "memverifikasi"
+    users ||--o{ maintenance_requests : "melaporkan"
+    properties ||--o{ rooms : "memiliki"
+    properties ||--o{ property_images : "punya foto"
+    rooms ||--o{ property_images : "foto kamar"
+    rooms ||--o{ room_facilities : "punya"
+    facilities ||--o{ room_facilities : "dipakai"
+    rooms ||--o{ bookings : "dipesan"
+    rooms ||--o{ maintenance_requests : "mengalami"
+    bookings ||--o{ payments : "dibayar"
+    bookings ||--o{ booking_status_histories : "mencatat"
+    bookings ||--o{ maintenance_requests : "menjadi dasar"
+
+    users {
+        uuid id PK
+        varchar full_name
+        varchar email UK
+        varchar password_hash
+        varchar phone_number
+        text avatar_url
+        varchar role
+        varchar account_status
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    properties {
+        uuid id PK
+        uuid owner_id FK
+        varchar name
+        text description
+        text address
+        varchar city
+        numeric latitude
+        numeric longitude
+        varchar property_type
+        text rules
+        varchar verification_status
+        text rejection_note
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    rooms {
+        uuid id PK
+        uuid property_id FK
+        varchar room_number UK
+        varchar room_type
+        varchar dimensions
+        numeric monthly_price
+        smallint max_occupants
+        varchar bathroom_type
+        smallint floor_number
+        varchar status
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    facilities {
+        uuid id PK
+        varchar name UK
+    }
+
+    room_facilities {
+        uuid room_id PK, FK
+        uuid facility_id PK, FK
+    }
+
+    property_images {
+        uuid id PK
+        uuid property_id FK
+        uuid room_id FK
+        text image_url
+        text storage_key
+        boolean is_cover
+        timestamptz created_at
+    }
+
+    bookings {
+        uuid id PK
+        varchar booking_code UK
+        uuid tenant_id FK
+        uuid room_id FK
+        date start_date
+        smallint duration_months
+        date end_date
+        numeric rental_price_snapshot
+        numeric total_amount
+        varchar status
+        text note
+        text owner_note
+        timestamptz expires_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    booking_status_histories {
+        uuid id PK
+        uuid booking_id FK
+        varchar from_status
+        varchar to_status
+        uuid changed_by FK
+        text note
+        timestamptz created_at
+    }
+
+    payments {
+        uuid id PK
+        uuid booking_id FK
+        numeric amount
+        text proof_url
+        text storage_key
+        varchar status
+        uuid verified_by FK
+        timestamptz verified_at
+        text note
+        timestamptz created_at
+    }
+
+    maintenance_requests {
+        uuid id PK
+        uuid booking_id FK
+        uuid room_id FK
+        uuid tenant_id FK
+        varchar title
+        text description
+        text photo_url
+        text storage_key
+        varchar status
+        text owner_note
+        timestamptz created_at
+        timestamptz updated_at
+    }
