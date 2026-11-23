@@ -23,8 +23,7 @@ Tanggal pengujian: 19 November 2026.
 ## Cara menjalankan ulang
 
 ```bash
-cd api
-node src/server.js
+npm run dev
 ```
 
 Batas percobaan login bawaan adalah 10 per IP per 15 menit. Saat menjalankan skrip uji

@@ -35,34 +35,35 @@ website Next.js dan aplikasi mobile Flutter.
 │  ├─ kamus-data.md              # penjelasan setiap kolom
 │  ├─ query-contoh.sql           # 8 query untuk penjelasan ke penguji
 │  └─ schema.sql                 # skema gabungan siap dijalankan di psql
-├─ api/
-│  ├─ api.http                   # koleksi REST Client: semua endpoint
-│  ├─ contoh-upload/             # berkas contoh untuk uji unggah
-│  ├─ migrations/                # migration node-pg-migrate
-│  ├─ scripts/seed.js            # data contoh, aman dijalankan berulang
-│  ├─ uploads/                   # hanya untuk driver local (masuk .gitignore)
-│  └─ src/
-│     ├─ app.js                  # susun middleware & route
-│     ├─ server.js               # listen + cek koneksi database
-│     ├─ config/                 # env.js, db.js (pool, type parser)
-│     ├─ middlewares/            # auth, requireRole, validate, upload, errorHandler
-│     ├─ utils/                  # response, HttpError, storage, bookingRules
-│     └─ modules/                # auth, users, facilities, properties, rooms,
+├─ api.http                      # koleksi REST Client: semua endpoint
+├─ contoh-upload/                # berkas contoh untuk uji unggah
+├─ migrations/                   # migration node-pg-migrate
+├─ scripts/seed.ts               # data contoh, aman dijalankan berulang
+├─ uploads/                      # hanya untuk driver local (masuk .gitignore)
+├─ src/
+│  ├─ app.ts                     # susun middleware & route
+│  ├─ server.ts                  # listen + cek koneksi database
+│  ├─ config/                    # env.ts, db.ts (pool, type parser)
+│  ├─ middlewares/               # auth, requireRole, validate, upload, errorHandler
+│  ├─ types/                     # tipe domain bersama + augmentasi Express
+│  ├─ utils/                     # response, HttpError, storage, bookingRules
+│  └─ modules/                   # auth, users, facilities, properties, rooms,
 │                                # bookings, payments, maintenance, owner, admin
 └─ .github/
    ├─ ISSUE_TEMPLATE/            # template fitur, bug, tugas
    └─ pull_request_template.md
 ```
 
-Setiap modul berisi pasangan `*.routes.js` (definisi route + middleware), `*.service.js`
-(SQL dan logika), dan `*.schema.js` (validasi `zod`). Tidak ada lapisan controller terpisah.
+Seluruh kode sumber ditulis **TypeScript** dan dijalankan langsung dengan `tsx`
+(tanpa langkah build saat pengembangan). Setiap modul berisi pasangan `*.routes.ts`
+(definisi route + middleware), `*.service.ts` (SQL dan logika), dan `*.schema.ts`
+(validasi `zod`). Tidak ada lapisan controller terpisah.
 
 ## Menjalankan di lokal
 
 Prasyarat: Node.js 20+, PostgreSQL yang bisa diakses.
 
 ```bash
-cd api
 cp .env.example .env
 ```
 
@@ -91,8 +92,10 @@ Perintah lain yang tersedia:
 
 | Perintah | Kegunaan |
 |---|---|
-| `npm start` | jalankan server tanpa watch |
-| `npm run dev` | jalankan server dengan `node --watch` |
+| `npm run dev` | jalankan server dengan `tsx watch` (auto restart) |
+| `npm start` | jalankan server sekali jalan |
+| `npm run build` | kompilasi TypeScript ke `dist/` |
+| `npm run typecheck` | periksa tipe tanpa menulis berkas |
 | `npm run migrate:up` | jalankan semua migration |
 | `npm run migrate:down` | batalkan migration terakhir |
 | `npm run seed` | isi akun uji dan data contoh (idempotent) |

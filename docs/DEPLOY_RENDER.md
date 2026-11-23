@@ -71,7 +71,7 @@ foto properti dan bukti transfer akan hilang bila disimpan lokal.
 **Cara menaruh `ca.pem` pada `DB_CA_CERT`:** buka `ca.pem` di editor teks, salin seluruh
 isinya termasuk baris `-----BEGIN CERTIFICATE-----` dan `-----END CERTIFICATE-----`, lalu
 tempel utuh ke kolom nilai. Kalau dashboard menolak baris baru, ganti setiap baris baru
-dengan tulisan `\n` — kode di `api/src/config/db.js` mengubahnya kembali menjadi baris baru
+dengan tulisan `\n` — kode di `src/config/db.ts` mengubahnya kembali menjadi baris baru
 sebelum dipakai.
 
 ## 4. Jalankan migration dan seed
@@ -83,7 +83,6 @@ mengulang migration.
 Di PowerShell (Windows):
 
 ```powershell
-cd api
 $env:DATABASE_URL = "postgres://avnadmin:PASSWORD@host-aiven:12345/defaultdb"
 $env:DB_CA_CERT = Get-Content ca.pem -Raw
 npm run migrate:up
@@ -93,7 +92,6 @@ npm run seed
 Di bash/Linux/macOS:
 
 ```bash
-cd api
 export DATABASE_URL="postgres://avnadmin:PASSWORD@host-aiven:12345/defaultdb"
 export DB_CA_CERT="$(cat ca.pem)"
 npm run migrate:up
