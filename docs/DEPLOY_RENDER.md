@@ -2,11 +2,11 @@
 
 Panduan ini menempatkan API HUNIKOS di Render (free web service) dengan database
 PostgreSQL dari Aiven. Semua langkah di bawah sudah disesuaikan dengan struktur repo:
-kodenya ada di folder `api/`, jadi **Root Directory** di Render harus diisi `api`.
+kodenya ada di root repo, jadi **Root Directory** di Render dibiarkan kosong.
 
 ## Yang perlu disiapkan
 
-- Repo GitHub yang sudah berisi folder `api/` (branch `develop` setelah PR di-merge).
+- Repo GitHub HUNIKOS (branch `develop` setelah PR di-merge).
 - Akun Render (gratis, tanpa kartu kredit).
 - Service PostgreSQL di Aiven (free plan) yang sudah aktif.
 - Node.js dan `npm` di komputer untuk menjalankan migration ke database Aiven.
@@ -33,13 +33,13 @@ kodenya ada di folder `api/`, jadi **Root Directory** di Render harus diisi `api
 | Name | `hunikos-api` (bebas) |
 | Language | `Node` |
 | Branch | `develop` (atau `main` setelah rilis) |
-| **Root Directory** | `api` |
+| **Root Directory** | *(kosongkan)* |
 | Build Command | `npm install` |
 | Start Command | `npm start` |
 | Health Check Path | `/api/health` |
 | Instance Type | `Free` |
 
-Root Directory wajib `api`, karena `package.json` backend ada di sana. Kalau dikosongkan,
+Root Directory dikosongkan karena `package.json` sudah berada di root repo. Kalau diisi `api`,
 Render tidak menemukan `package.json` dan build gagal.
 
 ## 3. Isi environment variable
@@ -144,7 +144,7 @@ Kalau dua permintaan itu berhasil, backend siap dipakai website dan aplikasi mob
 
 | Gejala | Penyebab yang paling sering | Tindakan |
 |---|---|---|
-| Build gagal: `package.json` tidak ditemukan | Root Directory kosong | Isi Root Directory dengan `api` |
+| Build gagal: `package.json` tidak ditemukan | Root Directory diisi `api` | Kosongkan Root Directory |
 | Server berhenti: `DB_CA_CERT wajib diisi di produksi` | `DB_CA_CERT` kosong saat `NODE_ENV=production` | Tempel isi `ca.pem` |
 | Server berhenti: `JWT_SECRET minimal 32 karakter` | Rahasia terlalu pendek | Buat string acak baru minimal 32 karakter |
 | Request pertama lambat sekitar satu menit | Layanan gratis sedang bangun | Tunggu, lalu ulangi |

@@ -125,7 +125,7 @@ Semua respons memakai amplop `{ success, message, data?, meta?, errors? }`.
 | Admin | `GET /api/admin/dashboard`, `GET /api/admin/users`, `PATCH /api/admin/users/:id/status`, `GET /api/admin/properties`, `PATCH /api/admin/properties/:id/verification` |
 
 Rincian body, query, dan bentuk response ada di kontrak bagian 8 dan 9. Contoh request untuk
-setiap endpoint ada di `api/api.http` (buka di VS Code dengan ekstensi **REST Client**, lalu
+setiap endpoint ada di `api.http` (buka di VS Code dengan ekstensi **REST Client**, lalu
 jalankan dari atas ke bawah).
 
 ## Menguji
@@ -144,7 +144,7 @@ PORT=3100 LOGIN_RATE_LIMIT=200 npm start
 
 Panduan lengkap ada di [`docs/DEPLOY_RENDER.md`](docs/DEPLOY_RENDER.md). Ringkasnya:
 
-- Render **Web Service**, Root Directory `api`, build `npm install`, start `npm start`,
+- Render **Web Service**, Root Directory dikosongkan, build `npm install`, start `npm start`,
   health check path `/api/health`.
 - `NODE_ENV=production`, `DATABASE_URL` dari Aiven, `DB_CA_CERT` berisi isi `ca.pem`.
 - Produksi wajib `STORAGE_DRIVER=cloudinary`, karena disk layanan gratis bersifat sementara.
