@@ -61,13 +61,40 @@ Seluruh kode sumber ditulis **TypeScript** dan dijalankan langsung dengan `tsx`
 
 ## Menjalankan di lokal
 
-Prasyarat: Node.js 20+, PostgreSQL yang bisa diakses.
+Prasyarat: Node.js 20+, PostgreSQL 18 terpasang di `C:\Program Files\PostgreSQL\18\bin`
+(boleh diubah lewat `PG_BIN`).
+
+Repo ini membawa cluster database sendiri di `.pgdata/` (port **5434**), terpisah dari
+instalasi PostgreSQL bawaan mesin di 5432. Menyalakannya:
+
+```bash
+npm run db:local -- start
+```
+
+Perintah itu membuat cluster bila belum ada, menyalakannya, lalu membuat database
+`hunikos_test` bila belum ada. Perintah lain:
+
+| Perintah | Kegunaan |
+|---|---|
+| `npm run db:local -- init` | buat cluster + database dari nol |
+| `npm run db:local -- start` | nyalakan cluster |
+| `npm run db:local -- stop` | hentikan cluster |
+| `npm run db:local -- status` | cek apakah cluster berjalan |
+
+Setelah cluster hidup, siapkan `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Isi `.env` minimal `DATABASE_URL` dan `JWT_SECRET` (32 karakter acak). Lalu:
+Isi `.env` minimal `DATABASE_URL` dan `JWT_SECRET` (32 karakter acak). Untuk cluster lokal,
+`DATABASE_URL` cukup:
+
+```bash
+DATABASE_URL=postgres://postgres@127.0.0.1:5434/hunikos_test
+```
+
+Lalu:
 
 ```bash
 npm install
@@ -98,6 +125,7 @@ Perintah lain yang tersedia:
 | `npm run typecheck` | periksa tipe tanpa menulis berkas |
 | `npm run migrate:up` | jalankan semua migration |
 | `npm run migrate:down` | batalkan migration terakhir |
+| `npm run db:local` | kelola cluster PostgreSQL lokal (`start`/`stop`/`status`) |
 | `npm run seed` | isi akun uji dan data contoh (idempotent) |
 
 ## Akun uji
