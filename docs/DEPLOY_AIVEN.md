@@ -40,7 +40,8 @@ Jangan menambahkan `?sslmode=...` di belakangnya. Kode aplikasi mengatur SSL sen
 lewat `DB_CA_CERT`; menambahkan parameter itu bisa membuat perilaku SSL tidak konsisten.
 
 Klik **Download CA certificate** untuk menyimpan `ca.pem`. Berkas ini nanti dipakai di
-pgAdmin (sebagai *Root certificate*) dan di environment variable `DB_CA_CERT`.
+pgAdmin (sebagai *Root certificate*) dan oleh aplikasi lewat `DB_CA_CERT` atau
+`DB_CA_CERT_PATH` (lihat langkah 5).
 
 ---
 
@@ -100,11 +101,19 @@ Akun uji **tidak** ada di `schema.sql`, karena `password_hash` harus berupa hash
 
 ```bash
 DATABASE_URL=postgres://avnadmin:PASSWORD@HOST:PORT/defaultdb
-DB_CA_CERT=<seluruh isi ca.pem>
+DB_CA_CERT_PATH=certs/aiven-ca.pem
 ```
 
-`DB_CA_CERT` boleh ditempel multi-baris. Kalau kolomnya hanya menerima satu baris,
-ganti setiap baris baru dengan `\n` — kode mengubahnya kembali menjadi baris baru.
+Sertifikat bisa diisi dua cara, pilih salah satu:
+
+| Cara | Cocok untuk | Isi |
+|---|---|---|
+| `DB_CA_CERT_PATH` | lokal | path ke berkas `.pem`, mis. `certs/aiven-ca.pem` |
+| `DB_CA_CERT` | Railway / server tanpa berkas | seluruh isi `ca.pem` ditempel langsung |
+
+Kalau memakai `DB_CA_CERT`, isinya boleh multi-baris. Bila kolomnya hanya menerima satu
+baris, ganti setiap baris baru dengan `\n` — kode mengubahnya kembali menjadi baris baru.
+`DB_CA_CERT` didahulukan; `DB_CA_CERT_PATH` dipakai bila `DB_CA_CERT` kosong.
 
 Lalu:
 
@@ -169,7 +178,8 @@ curl http://localhost:3000/api/health
 |---|---|
 | `NODE_ENV` | `production` |
 | `DATABASE_URL` | `postgres://avnadmin:PASSWORD@HOST:PORT/defaultdb` |
-| `DB_CA_CERT` | seluruh isi `ca.pem` |
+| `DB_CA_CERT` | seluruh isi `ca.pem`, atau kosongkan bila memakai path |
+| `DB_CA_CERT_PATH` | alternatif bila server menyediakan berkasnya (tidak dipakai di Railway) |
 | `DB_POOL_MAX` | `5` |
 | `JWT_SECRET` | string acak baru, minimal 32 karakter |
 | `CORS_ORIGINS` | domain website + `http://localhost:3000` |
@@ -183,9 +193,9 @@ Setelah deploy, cek `https://NAMA-SERVICE-production.up.railway.app/api/health`.
 
 ## Hal yang perlu diketahui
 
-**SSL wajib.** Aplikasi sengaja berhenti bila `NODE_ENV=production` dan `DB_CA_CERT`
-kosong, dengan pesan `DB_CA_CERT wajib diisi di produksi`. Itu pengaman, bukan bug —
-tanpa sertifikat, koneksi ke Aiven ditolak.
+**SSL wajib.** Aplikasi sengaja berhenti bila `NODE_ENV=production` dan tidak ada
+sertifikat CA, dengan pesan `Sertifikat CA wajib diisi di produksi`. Itu pengaman, bukan
+bug — tanpa sertifikat, koneksi ke Aiven ditolak.
 
 **Batas koneksi.** `DB_POOL_MAX` diisi `5` agar jauh di bawah batas service. Angka pasti
 batas koneksi dan kuota penyimpanan free plan berubah dari waktu ke waktu — lihat
@@ -208,7 +218,7 @@ mengubah, pakai aplikasi.
 | Gejala | Penyebab paling sering | Tindakan |
 |---|---|---|
 | `password authentication failed for user "avnadmin"` | password kurang lengkap saat salin | salin ulang dari *Overview*, jangan ketik manual |
-| `no pg_hba.conf entry` / `SSL required` | SSL belum aktif | pgAdmin: SSL mode **Require**; aplikasi: isi `DB_CA_CERT` |
+| `no pg_hba.conf entry` / `SSL required` | SSL belum aktif | pgAdmin: SSL mode **Require**; aplikasi: isi `DB_CA_CERT` atau `DB_CA_CERT_PATH` |
 | `self-signed certificate in certificate chain` | CA cert belum dipakai | isi *Root certificate* di pgAdmin, `DB_CA_CERT` di aplikasi |
 | `timeout expired` | service sedang bangun atau mati | cek status di console, tunggu *Running* |
 | `too many clients already` | pool terlalu besar | turunkan `DB_POOL_MAX` |

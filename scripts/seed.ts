@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs'
 import pg from 'pg'
 import type { PoolClient } from 'pg'
 import type { BookingStatus, Role, RoomStatus } from '../src/types/domain.js'
+import { loadCaCert } from '../src/config/caCert.js'
 
 // Struktur lama menyimpan .env di dalam folder api/. Kalau .env di root belum ada,
 // nilai dibaca dari sana supaya `npm run seed` tetap jalan tanpa memindahkan berkas.
@@ -16,12 +17,11 @@ if (!process.env.DATABASE_URL && existsSync('api/.env')) {
 
 const { Pool } = pg
 
+const ca = loadCaCert()
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 2,
-  ssl: process.env.DB_CA_CERT
-    ? { ca: process.env.DB_CA_CERT.replace(/\\n/g, '\n'), rejectUnauthorized: true }
-    : false,
+  ssl: ca ? { ca, rejectUnauthorized: true } : false,
 })
 
 const hash = (password: string): Promise<string> => bcrypt.hash(password, 10)

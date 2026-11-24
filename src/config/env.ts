@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { existsSync } from 'node:fs'
 import { config as loadEnv } from 'dotenv'
+import { loadCaCert } from './caCert.js'
 
 // Struktur lama menyimpan .env di dalam folder api/. Kalau .env di root belum ada,
 // nilai dibaca dari sana supaya `npm run dev` tetap jalan tanpa memindahkan berkas.
@@ -38,10 +39,13 @@ if (storageDriver === 'cloudinary') {
 
 const databaseUrl = process.env.DATABASE_URL as string
 const isLocalDatabase = /@(localhost|127\.0\.0\.1)[:/]/.test(databaseUrl)
+const caCert = loadCaCert()
 
 // Produksi wajib SSL; tanpa sertifikat CA koneksi Aiven akan ditolak.
-if (nodeEnv === 'production' && !process.env.DB_CA_CERT && !isLocalDatabase) {
-  console.error('DB_CA_CERT wajib diisi di produksi (isi file ca.pem dari Aiven).')
+if (nodeEnv === 'production' && !caCert && !isLocalDatabase) {
+  console.error(
+    'Sertifikat CA wajib diisi di produksi: set DB_CA_CERT_PATH ke file ca.pem dari Aiven, atau DB_CA_CERT dengan isinya.',
+  )
   process.exit(1)
 }
 
@@ -50,7 +54,7 @@ export const env = {
   isProduction: nodeEnv === 'production',
   port: Number(process.env.PORT ?? 3000),
   databaseUrl,
-  dbCaCert: process.env.DB_CA_CERT || null,
+  dbCaCert: caCert,
   dbPoolMax: Number(process.env.DB_POOL_MAX ?? 5),
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
