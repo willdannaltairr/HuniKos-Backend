@@ -89,10 +89,14 @@ identik dengan database yang dipakai aplikasi.
 
 ## 5. Isi akun uji dan data contoh
 
-Akun uji **tidak** ada di `schema.sql`, karena `password_hash` harus dibuat oleh
-`bcryptjs`. Jalankan skrip seed dari komputer, diarahkan ke Aiven.
+Akun uji **tidak** ada di `schema.sql`, karena `password_hash` harus berupa hash bcrypt.
 
-Di `api/.env` (atau `.env` di root) isi dua baris ini:
+**Cara 1 — langsung di pgAdmin (tanpa Node.js).** Buka Query Tool di database tujuan, buka
+`docs/seed.sql`, lalu tekan **F5**. Berkas itu membuat 6 akun uji, 3 properti, 7 kamar,
+29 relasi fasilitas, 4 booking dengan status berbeda, 1 pembayaran terverifikasi, dan
+1 laporan kerusakan. Aman dijalankan dua kali: run kedua menyisipkan 0 baris.
+
+**Cara 2 — dari komputer, lewat Node.js.** Isi `.env` lebih dulu:
 
 ```bash
 DATABASE_URL=postgres://avnadmin:PASSWORD@HOST:PORT/defaultdb
@@ -109,16 +113,13 @@ npm install
 npm run seed
 ```
 
-Hasil yang benar:
+Hasil yang benar (sama untuk kedua cara):
 
 ```text
-Seed selesai.
 Admin  : admin@hunikos.test / Admin123!
 Owner  : owner1@hunikos.test, owner2@hunikos.test / Owner123!
 Tenant : tenant1@hunikos.test, tenant2@hunikos.test, tenant3@hunikos.test / Tenant123!
 ```
-
-Seed aman dijalankan dua kali; data yang sudah ada tidak diduplikasi.
 
 > Kalau kamu lebih suka memindahkan data yang sekarang ada di lokal (bukan data contoh),
 > gunakan `pg_dump` dari PostgreSQL lokal lalu `pg_restore` ke Aiven. Keduanya butuh
@@ -138,10 +139,12 @@ WHERE schemaname = 'public';
 SELECT status, count(*) FROM bookings GROUP BY status ORDER BY status;
 ```
 
-Tabel pertama harus berisi 10. Yang kedua menampilkan sebaran status booking hasil seed.
+Tabel pertama harus berisi 10. Yang kedua menampilkan sebaran status booking hasil seed
+(harus ada `PENDING`, `AWAITING_PAYMENT`, `CONFIRMED`, dan `REJECTED`).
 
-Untuk mencoba query fitur, ada [`query-hunikos.sql`](query-hunikos.sql): 26 query
-terpisah per role (publik, penyewa, pemilik, admin) plus 3 query pemeriksaan data.
+Untuk memastikan data seed utuh, `docs/seed.sql` sudah mencetak rekap jumlah baris di
+akhir berkasnya: `users` 6, `properties` 3, `rooms` 7, `room_facilities` 29,
+`bookings` 4, `booking_status_histories` 5, `payments` 1, `maintenance_requests` 1.
 
 ---
 
@@ -195,8 +198,8 @@ pertama.
 
 **Ubah data lewat aplikasi, bukan lewat pgAdmin.** Status booking dan status kamar saling
 terikat. Mengubah `bookings.status` langsung di pgAdmin tanpa memperbarui `rooms.status`
-akan membuat data tidak konsisten. Untuk latihan query, pakai SELECT seperti di
-`query-hunikos.sql`.
+akan membuat data tidak konsisten. Kalau perlu memeriksa data, jalankan `SELECT`; kalau
+mengubah, pakai aplikasi.
 
 ---
 
