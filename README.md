@@ -6,7 +6,8 @@ website Next.js dan aplikasi mobile Flutter.
 - Kontrak API + database (sumber kebenaran): [`docs/00_KONTRAK_BERSAMA.md`](docs/00_KONTRAK_BERSAMA.md)
 - Aturan branch & commit: [`AGENTS.md`](AGENTS.md) — panduan lengkap di [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md)
 - Hasil pengujian yang benar-benar dijalankan: [`docs/hasil-pengujian.md`](docs/hasil-pengujian.md)
-- Panduan deploy: [`docs/DEPLOY_RENDER.md`](docs/DEPLOY_RENDER.md)
+- Panduan deploy backend: [`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md)
+- Panduan database: [`docs/DEPLOY_AIVEN.md`](docs/DEPLOY_AIVEN.md)
 
 ## Stack
 
@@ -19,7 +20,7 @@ website Next.js dan aplikasi mobile Flutter.
 | Validasi | `zod@3` |
 | Auth | JWT HS256 + `bcryptjs` |
 | Upload | `multer` → driver `local` (dev) atau `cloudinary` (produksi) |
-| Hosting | Render (free web service) |
+| Hosting | Railway |
 
 ## Struktur repo
 
@@ -29,7 +30,7 @@ website Next.js dan aplikasi mobile Flutter.
 ├─ docs/
 │  ├─ 00_KONTRAK_BERSAMA.md      # kontrak API + database
 │  ├─ DEPLOY_AIVEN.md            # panduan database ke Aiven
-│  ├─ DEPLOY_RENDER.md           # panduan deploy backend ke Render
+│  ├─ DEPLOY_RAILWAY.md          # panduan deploy backend ke Railway
 │  ├─ GIT_WORKFLOW.md            # alur branch, commit, issue, PR
 │  ├─ hasil-pengujian.md         # hasil uji nyata + kasus negatif
 │  ├─ schema.sql                 # 10 tabel + index, siap dijalankan di psql/pgAdmin
@@ -169,13 +170,15 @@ PORT=3100 LOGIN_RATE_LIMIT=200 npm start
 
 ## Deploy
 
-Panduan lengkap ada di [`docs/DEPLOY_RENDER.md`](docs/DEPLOY_RENDER.md). Ringkasnya:
+Panduan lengkap ada di [`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md), dan database di
+[`docs/DEPLOY_AIVEN.md`](docs/DEPLOY_AIVEN.md). Ringkasnya:
 
-- Render **Web Service**, Root Directory dikosongkan, build `npm install`, start `npm start`,
-  health check path `/api/health`.
+- Railway **deploy dari repo GitHub**, Root Directory dikosongkan; build dan start diambil
+  dari `package.json` (`npm install` / `npm start`).
+- Health check path `/api/health`, domain publik dibuat lewat Settings → Networking.
 - `NODE_ENV=production`, `DATABASE_URL` dari Aiven, `DB_CA_CERT` berisi isi `ca.pem`.
-- Produksi wajib `STORAGE_DRIVER=cloudinary`, karena disk layanan gratis bersifat sementara.
-- Layanan gratis tidur setelah 15 menit tanpa trafik; buka `/api/health` sebelum presentasi.
+- Produksi wajib `STORAGE_DRIVER=cloudinary`, karena sistem berkas container sementara.
+- `PORT` tidak perlu diisi; Railway menyuntikkannya sendiri.
 
 ## Alur kerja branch
 

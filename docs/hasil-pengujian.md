@@ -115,7 +115,7 @@ Tiga masalah ini muncul dari pengujian, bukan dari membaca kode saja.
 
 - **Driver Cloudinary.** Semua uji memakai `STORAGE_DRIVER=local`. Jalur Cloudinary sudah
   ditulis tetapi belum pernah dijalankan terhadap akun Cloudinary sungguhan.
-- **Deploy ke Render dan database Aiven.** Pengujian memakai PostgreSQL lokal. Koneksi SSL
+- **Deploy ke Railway dan database Aiven.** Pengujian memakai PostgreSQL lokal. Koneksi SSL
   dengan `DB_CA_CERT` belum dicoba ke Aiven.
 - **Pengujian beban.** Tidak ada uji jumlah permintaan bersamaan di luar dua booking
   paralel di atas.

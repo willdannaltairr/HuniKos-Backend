@@ -1,7 +1,7 @@
 # Deploy Database HUNIKOS ke Aiven
 
-Panduan ini khusus untuk **database**-nya. Backend Express tetap naik ke Render
-(lihat [`DEPLOY_RENDER.md`](DEPLOY_RENDER.md)).
+Panduan ini khusus untuk **database**-nya. Backend Express naik ke Railway
+(lihat [`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md)).
 
 Aiven memakai satu akun admin bawaan bernama `avnadmin`. Kamu tidak perlu membuat user
 sendiri untuk proyek ini.
@@ -162,8 +162,8 @@ Log harus menampilkan `Koneksi database berhasil.` Lalu:
 curl http://localhost:3000/api/health
 ```
 
-**Produksi (Render)** — isi environment variable berikut, lalu deploy seperti di
-[`DEPLOY_RENDER.md`](DEPLOY_RENDER.md):
+**Produksi (Railway)** — isi environment variable berikut, lalu deploy seperti di
+[`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md):
 
 | Variable | Nilai |
 |---|---|
@@ -173,10 +173,10 @@ curl http://localhost:3000/api/health
 | `DB_POOL_MAX` | `5` |
 | `JWT_SECRET` | string acak baru, minimal 32 karakter |
 | `CORS_ORIGINS` | domain website + `http://localhost:3000` |
-| `BASE_URL` | URL Render, misalnya `https://hunikos-api.onrender.com` |
+| `BASE_URL` | URL Railway, misalnya `https://hunikos-api-production.up.railway.app` |
 | `STORAGE_DRIVER` | `cloudinary` (+ 3 kunci Cloudinary) |
 
-Setelah deploy, cek `https://NAMA-SERVICE.onrender.com/api/health`. Harus menjawab
+Setelah deploy, cek `https://NAMA-SERVICE-production.up.railway.app/api/health`. Harus menjawab
 `{"success":true,"message":"Server dan database sehat",...}`.
 
 ---

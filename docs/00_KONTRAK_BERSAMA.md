@@ -18,7 +18,7 @@
 | Auth | JWT (HS256) + `bcryptjs` | Password wajib di-hash |
 | Upload | `multer` (memory storage) → driver `local` (dev) atau `cloudinary` (produksi) | Disk gratis di hosting biasanya sementara |
 | Mobile | Flutter (stable terbaru), Provider, Dio, go_router | Soal KOKE mewajibkan Flutter |
-| Hosting backend | Render (free web service) | Gratis, tanpa kartu kredit, cocok untuk Express |
+| Hosting backend | Railway | Deploy langsung dari repo GitHub, cukup untuk Express |
 | Hosting web | Vercel (website Next.js sudah ada) | Sesuai soal SRS |
 
 Bagian yang TIDAK masuk MVP (jangan dibuat): kontrak digital, invoice, payment gateway (Midtrans), Google Maps, email (Resend), Sentry, KosMatch, TrueCost, CampusRoute, KosVisit, Room Passport, review, chat, notifikasi, audit log.
