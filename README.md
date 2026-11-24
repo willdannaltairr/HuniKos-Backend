@@ -28,13 +28,12 @@ website Next.js dan aplikasi mobile Flutter.
 ├─ AGENTS.md                    # aturan kerja yang dibaca otomatis tiap sesi
 ├─ docs/
 │  ├─ 00_KONTRAK_BERSAMA.md      # kontrak API + database
-│  ├─ DEPLOY_RENDER.md           # panduan deploy ke Render
+│  ├─ DEPLOY_AIVEN.md            # panduan database ke Aiven
+│  ├─ DEPLOY_RENDER.md           # panduan deploy backend ke Render
 │  ├─ GIT_WORKFLOW.md            # alur branch, commit, issue, PR
-│  ├─ erd.dbml / erd.mmd         # diagram relasi tabel
 │  ├─ hasil-pengujian.md         # hasil uji nyata + kasus negatif
-│  ├─ kamus-data.md              # penjelasan setiap kolom
-│  ├─ query-contoh.sql           # 8 query untuk penjelasan ke penguji
-│  └─ schema.sql                 # skema gabungan siap dijalankan di psql
+│  ├─ schema.sql                 # 10 tabel + index, siap dijalankan di psql/pgAdmin
+│  └─ seed.sql                   # akun uji + data contoh, siap dijalankan di psql/pgAdmin
 ├─ api.http                      # koleksi REST Client: semua endpoint
 ├─ contoh-upload/                # berkas contoh untuk uji unggah
 ├─ migrations/                   # migration node-pg-migrate
