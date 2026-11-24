@@ -1,0 +1,212 @@
+# Deploy Database HUNIKOS ke Aiven
+
+Panduan ini khusus untuk **database**-nya. Backend Express tetap naik ke Render
+(lihat [`DEPLOY_RENDER.md`](DEPLOY_RENDER.md)).
+
+Aiven memakai satu akun admin bawaan bernama `avnadmin`. Kamu tidak perlu membuat user
+sendiri untuk proyek ini.
+
+---
+
+## 1. Buat service PostgreSQL
+
+1. Masuk ke [console.aiven.io](https://console.aiven.io).
+2. Klik **Create service** → pilih **PostgreSQL**.
+3. Pilih **Free plan** dan satu region terdekat (misalnya Singapore).
+4. Beri nama service, misalnya `hunikos-db`, lalu **Create service**.
+5. Tunggu status berubah dari *Rebuilding* menjadi **Running** (biasanya 1–3 menit).
+
+---
+
+## 2. Ambil kredensial
+
+Buka service → tab **Overview**. Yang dibutuhkan ada di bagian *Connection information*:
+
+| Yang diambil | Dipakai untuk |
+|---|---|
+| **Host** | pgAdmin & `DATABASE_URL` |
+| **Port** | pgAdmin & `DATABASE_URL` |
+| **Database** (biasanya `defaultdb`) | pgAdmin & `DATABASE_URL` |
+| **Password** milik `avnadmin` | pgAdmin & `DATABASE_URL` |
+| **CA Certificate** (`ca.pem`) | SSL, wajib |
+
+Bentuk `DATABASE_URL`-nya nanti:
+
+```text
+postgres://avnadmin:PASSWORD@HOST:PORT/defaultdb
+```
+
+Jangan menambahkan `?sslmode=...` di belakangnya. Kode aplikasi mengatur SSL sendiri
+lewat `DB_CA_CERT`; menambahkan parameter itu bisa membuat perilaku SSL tidak konsisten.
+
+Klik **Download CA certificate** untuk menyimpan `ca.pem`. Berkas ini nanti dipakai di
+pgAdmin (sebagai *Root certificate*) dan di environment variable `DB_CA_CERT`.
+
+---
+
+## 3. Hubungkan pgAdmin ke Aiven
+
+1. Buka pgAdmin → klik kanan **Servers** → **Register → Server**.
+2. Tab **General** → *Name*: `HuniKos Aiven`.
+3. Tab **Connection**:
+
+| Kolom | Nilai |
+|---|---|
+| Host name/address | Host dari langkah 2 |
+| Port | Port dari langkah 2 |
+| Maintenance database | `defaultdb` |
+| Username | `avnadmin` |
+| Password | Password dari langkah 2 |
+
+4. Tab **SSL** → *SSL mode*: **Require**.
+5. Bila muncul error SSL, pada tab **SSL** yang sama isi **Root certificate** dengan
+   berkas `ca.pem` yang sudah diunduh.
+6. **Save**.
+
+Kalau berhasil, di sidebar akan muncul `HuniKos Aiven → Databases → defaultdb`.
+
+---
+
+## 4. Buat tabelnya
+
+Tabel dibuat lewat berkas SQL, bukan lewat migration tool. Alasannya: migration
+`node-pg-migrate` menulis riwayat ke tabel `pgmigrations`, sedangkan untuk ujian cukup
+struktur tabelnya yang terlihat rapi di pgAdmin.
+
+1. Klik kanan `defaultdb` → **Query Tool**.
+2. Ikon folder → pilih `docs/schema.sql`.
+3. Tekan **F5**.
+4. Klik kanan **Schemas → public → Tables → Refresh**.
+
+Hasil yang benar: **10 tabel** (`users`, `properties`, `rooms`, `facilities`,
+`room_facilities`, `property_images`, `bookings`, `booking_status_histories`, `payments`,
+`maintenance_requests`), 10 index, 15 foreign key, dan 12 baris fasilitas.
+
+Berkas itu sudah diuji: dijalankan ke database kosong pada PostgreSQL 18 dan hasilnya
+identik dengan database yang dipakai aplikasi.
+
+---
+
+## 5. Isi akun uji dan data contoh
+
+Akun uji **tidak** ada di `schema.sql`, karena `password_hash` harus dibuat oleh
+`bcryptjs`. Jalankan skrip seed dari komputer, diarahkan ke Aiven.
+
+Di `api/.env` (atau `.env` di root) isi dua baris ini:
+
+```bash
+DATABASE_URL=postgres://avnadmin:PASSWORD@HOST:PORT/defaultdb
+DB_CA_CERT=<seluruh isi ca.pem>
+```
+
+`DB_CA_CERT` boleh ditempel multi-baris. Kalau kolomnya hanya menerima satu baris,
+ganti setiap baris baru dengan `\n` — kode mengubahnya kembali menjadi baris baru.
+
+Lalu:
+
+```bash
+npm install
+npm run seed
+```
+
+Hasil yang benar:
+
+```text
+Seed selesai.
+Admin  : admin@hunikos.test / Admin123!
+Owner  : owner1@hunikos.test, owner2@hunikos.test / Owner123!
+Tenant : tenant1@hunikos.test, tenant2@hunikos.test, tenant3@hunikos.test / Tenant123!
+```
+
+Seed aman dijalankan dua kali; data yang sudah ada tidak diduplikasi.
+
+> Kalau kamu lebih suka memindahkan data yang sekarang ada di lokal (bukan data contoh),
+> gunakan `pg_dump` dari PostgreSQL lokal lalu `pg_restore` ke Aiven. Keduanya butuh
+> `--no-owner --no-privileges` supaya tidak bentrok dengan user `avnadmin`.
+
+---
+
+## 6. Verifikasi di pgAdmin
+
+Buka Query Tool di `defaultdb` dan jalankan:
+
+```sql
+SELECT count(*) AS jumlah_tabel
+FROM pg_tables
+WHERE schemaname = 'public';
+
+SELECT status, count(*) FROM bookings GROUP BY status ORDER BY status;
+```
+
+Tabel pertama harus berisi 10. Yang kedua menampilkan sebaran status booking hasil seed.
+
+Untuk mencoba query fitur, ada [`query-hunikos.sql`](query-hunikos.sql): 26 query
+terpisah per role (publik, penyewa, pemilik, admin) plus 3 query pemeriksaan data.
+
+---
+
+## 7. Sambungkan backend
+
+**Lokal** — setelah `.env` diarahkan ke Aiven seperti langkah 5:
+
+```bash
+npm run dev
+```
+
+Log harus menampilkan `Koneksi database berhasil.` Lalu:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+**Produksi (Render)** — isi environment variable berikut, lalu deploy seperti di
+[`DEPLOY_RENDER.md`](DEPLOY_RENDER.md):
+
+| Variable | Nilai |
+|---|---|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | `postgres://avnadmin:PASSWORD@HOST:PORT/defaultdb` |
+| `DB_CA_CERT` | seluruh isi `ca.pem` |
+| `DB_POOL_MAX` | `5` |
+| `JWT_SECRET` | string acak baru, minimal 32 karakter |
+| `CORS_ORIGINS` | domain website + `http://localhost:3000` |
+| `BASE_URL` | URL Render, misalnya `https://hunikos-api.onrender.com` |
+| `STORAGE_DRIVER` | `cloudinary` (+ 3 kunci Cloudinary) |
+
+Setelah deploy, cek `https://NAMA-SERVICE.onrender.com/api/health`. Harus menjawab
+`{"success":true,"message":"Server dan database sehat",...}`.
+
+---
+
+## Hal yang perlu diketahui
+
+**SSL wajib.** Aplikasi sengaja berhenti bila `NODE_ENV=production` dan `DB_CA_CERT`
+kosong, dengan pesan `DB_CA_CERT wajib diisi di produksi`. Itu pengaman, bukan bug —
+tanpa sertifikat, koneksi ke Aiven ditolak.
+
+**Batas koneksi.** `DB_POOL_MAX` diisi `5` agar jauh di bawah batas service. Angka pasti
+batas koneksi dan kuota penyimpanan free plan berubah dari waktu ke waktu — lihat
+halaman *Plan* di console Aiven milikmu untuk angka yang berlaku sekarang.
+
+**Service bisa berhenti saat lama tidak dipakai.** Kalau koneksi tiba-tiba gagal padahal
+kredensial benar, cek dulu status service di console; kalau berstatus *Powered off*,
+nyalakan lagi dan tunggu *Running*. Ini alasan `/api/health` bisa lambat pada permintaan
+pertama.
+
+**Ubah data lewat aplikasi, bukan lewat pgAdmin.** Status booking dan status kamar saling
+terikat. Mengubah `bookings.status` langsung di pgAdmin tanpa memperbarui `rooms.status`
+akan membuat data tidak konsisten. Untuk latihan query, pakai SELECT seperti di
+`query-hunikos.sql`.
+
+---
+
+## Jika gagal
+
+| Gejala | Penyebab paling sering | Tindakan |
+|---|---|---|
+| `password authentication failed for user "avnadmin"` | password kurang lengkap saat salin | salin ulang dari *Overview*, jangan ketik manual |
+| `no pg_hba.conf entry` / `SSL required` | SSL belum aktif | pgAdmin: SSL mode **Require**; aplikasi: isi `DB_CA_CERT` |
+| `self-signed certificate in certificate chain` | CA cert belum dipakai | isi *Root certificate* di pgAdmin, `DB_CA_CERT` di aplikasi |
+| `timeout expired` | service sedang bangun atau mati | cek status di console, tunggu *Running* |
+| `too many clients already` | pool terlalu besar | turunkan `DB_POOL_MAX` |
+| Migrasi gagal `relation "users" already exists` | `schema.sql` dijalankan dua kali | pakai database kosong, atau lewati langkah 4 |
