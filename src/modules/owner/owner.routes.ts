@@ -3,18 +3,16 @@ import { authenticate } from '../../middlewares/auth.js'
 import { requireRole } from '../../middlewares/requireRole.js'
 import { validate } from '../../middlewares/validate.js'
 import { uploadFields, uploadedFiles } from '../../middlewares/upload.js'
-import { badRequest, notFound } from '../../utils/HttpError.js'
+import { badRequest } from '../../utils/HttpError.js'
 import { ok, created } from '../../utils/response.js'
-import { idParamSchema } from '../bookings/bookings.schema.js'
-import { bookingListQuerySchema } from '../bookings/bookings.schema.js'
-import { listBookings, getBookingDetail } from '../bookings/bookings.service.js'
+import { idParamSchema, bookingListQuerySchema } from '../bookings/bookings.schema.js'
+import { listBookings } from '../bookings/bookings.service.js'
+import { listOwnerPayments, verifyPayment } from '../payments/payments.service.js'
+import { listOwnerMaintenance, updateMaintenanceStatus } from '../maintenance/maintenance.service.js'
+import { maintenanceStatusSchema } from '../maintenance/maintenance.schema.js'
 import {
-  listOwnerPayments, verifyPayment,
-} from '../payments/payments.service.js'
-import { listOwnerMaintenance, updateMaintenanceStatus, maintenanceStatusSchema } from '../maintenance/maintenance.service.js'
-import {
-  propertySchema, roomSchema, roomUpdateSchema, decisionSchema, verifyPaymentSchema, imageRoomSchema,
-  imageIdParamSchema,
+  propertySchema, roomSchema, roomUpdateSchema, decisionSchema, verifyPaymentSchema,
+  imageRoomSchema, imageIdParamSchema,
 } from './owner.schema.js'
 import { getOwnerDashboard } from './owner.dashboard.service.js'
 import {
@@ -27,6 +25,7 @@ import type { PaymentStatus, MaintenanceStatus } from '../../types/domain.js'
 
 const router = Router()
 
+// Seluruh endpoint di sini hanya untuk pemilik, dan hanya untuk data miliknya.
 router.use(authenticate, requireRole('owner'))
 
 router.get('/dashboard', async (req, res) => {
@@ -43,16 +42,22 @@ router.post('/properties', validate(propertySchema), async (req, res) => {
   created(res, await createProperty(req.user.id, req.body), 'Properti berhasil dibuat dan menunggu verifikasi')
 })
 
-router.put('/properties/:id', validate(idParamSchema, 'params'), validate(propertySchema), async (req, res) => {
-  const property = await updateProperty(req.user.id, req.validated.params.id, req.body)
-  ok(res, property, 'Properti berhasil diperbarui')
-})
+router.put(
+  '/properties/:id',
+  validate(idParamSchema, 'params'),
+  validate(propertySchema),
+  async (req, res) => {
+    const property = await updateProperty(req.user.id, req.validated.params.id, req.body)
+    ok(res, property, 'Properti berhasil diperbarui')
+  },
+)
 
 router.delete('/properties/:id', validate(idParamSchema, 'params'), async (req, res) => {
   await deleteProperty(req.user.id, req.validated.params.id)
   ok(res, null, 'Properti berhasil dihapus')
 })
 
+// Field teks ikut multipart, jadi room_id divalidasi sendiri setelah upload.
 router.post(
   '/properties/:id/images',
   validate(idParamSchema, 'params'),
@@ -66,7 +71,10 @@ router.post(
       return res.status(422).json({
         success: false,
         message: 'Data tidak valid',
-        errors: parsed.error.issues.map((issue) => ({ field: issue.path.join('.') || 'room_id', message: issue.message })),
+        errors: parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.') || 'room_id',
+          message: issue.message,
+        })),
       })
     }
 
@@ -119,9 +127,14 @@ router.get('/bookings', validate(bookingListQuerySchema, 'query'), async (req, r
   ok(res, await listBookings({ ownerId: req.user.id, status: req.validated.query.status }), 'OK')
 })
 
-router.patch('/bookings/:id/decision', validate(idParamSchema, 'params'), validate(decisionSchema), async (req, res) => {
-  ok(res, await decideBooking(req.user.id, req.validated.params.id, req.body), 'Keputusan booking disimpan')
-})
+router.patch(
+  '/bookings/:id/decision',
+  validate(idParamSchema, 'params'),
+  validate(decisionSchema),
+  async (req, res) => {
+    ok(res, await decideBooking(req.user.id, req.validated.params.id, req.body), 'Keputusan booking disimpan')
+  },
+)
 
 router.patch('/bookings/:id/complete', validate(idParamSchema, 'params'), async (req, res) => {
   ok(res, await completeBooking(req.user.id, req.validated.params.id), 'Booking diselesaikan')
@@ -133,9 +146,14 @@ router.get('/payments', async (req, res) => {
   ok(res, await listOwnerPayments(req.user.id, req.query.status as PaymentStatus | undefined), 'OK')
 })
 
-router.patch('/payments/:id/verify', validate(idParamSchema, 'params'), validate(verifyPaymentSchema), async (req, res) => {
-  ok(res, await verifyPayment(req.user.id, req.validated.params.id, req.body), 'Pembayaran diproses')
-})
+router.patch(
+  '/payments/:id/verify',
+  validate(idParamSchema, 'params'),
+  validate(verifyPaymentSchema),
+  async (req, res) => {
+    ok(res, await verifyPayment(req.user.id, req.validated.params.id, req.body), 'Pembayaran diproses')
+  },
+)
 
 // --- Laporan kerusakan ---
 
@@ -143,8 +161,13 @@ router.get('/maintenance', async (req, res) => {
   ok(res, await listOwnerMaintenance(req.user.id, req.query.status as MaintenanceStatus | undefined), 'OK')
 })
 
-router.patch('/maintenance/:id', validate(idParamSchema, 'params'), validate(maintenanceStatusSchema), async (req, res) => {
-  ok(res, await updateMaintenanceStatus(req.user.id, req.validated.params.id, req.body), 'Laporan diperbarui')
-})
+router.patch(
+  '/maintenance/:id',
+  validate(idParamSchema, 'params'),
+  validate(maintenanceStatusSchema),
+  async (req, res) => {
+    ok(res, await updateMaintenanceStatus(req.user.id, req.validated.params.id, req.body), 'Laporan diperbarui')
+  },
+)
 
 export default router

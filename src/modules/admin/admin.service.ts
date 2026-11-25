@@ -1,7 +1,6 @@
 import { query, withTransaction } from '../../config/db.js'
 import { conflict, forbidden, notFound } from '../../utils/HttpError.js'
-import { buildMeta } from '../../utils/response.js'
-import type { PaginationMeta } from '../../utils/response.js'
+import { USER_COLUMNS } from '../auth/auth.service.js'
 import { attachCoverImages } from '../properties/properties.service.js'
 import type { AccountStatus, Role, UserRow, VerificationStatus } from '../../types/domain.js'
 
@@ -35,9 +34,7 @@ export interface UserListFilter {
   limit: number
 }
 
-export async function listUsers(
-  filters: UserListFilter,
-): Promise<{ users: UserRow[]; meta: PaginationMeta }> {
+export async function listUsers(filters: UserListFilter): Promise<{ users: UserRow[]; total: number }> {
   const values: unknown[] = []
   const conditions: string[] = []
 
@@ -55,6 +52,7 @@ export async function listUsers(
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
   const total = await query<{ total: number }>(
     `SELECT count(*)::int AS total FROM users ${where}`,
     values,
@@ -62,27 +60,17 @@ export async function listUsers(
 
   values.push(filters.limit, (filters.page - 1) * filters.limit)
   const { rows } = await query<UserRow>(
-    `SELECT id, full_name, email, phone_number, avatar_url, role, account_status, created_at
-     FROM users ${where}
+    `SELECT ${USER_COLUMNS} FROM users ${where}
      ORDER BY created_at DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values,
   )
 
-  return {
-    users: rows,
-    meta: buildMeta(filters.page, filters.limit, total.rows[0]?.total ?? 0),
-  }
+  return { users: rows, total: total.rows[0]?.total ?? 0 }
 }
 
-export async function changeUserStatus(
-  userId: string,
-  accountStatus: AccountStatus,
-): Promise<UserRow> {
-  const { rows } = await query<{ id: string; role: Role }>(
-    'SELECT id, role FROM users WHERE id = $1',
-    [userId],
-  )
+export async function changeUserStatus(userId: string, accountStatus: AccountStatus): Promise<UserRow> {
+  const { rows } = await query<{ role: Role }>('SELECT role FROM users WHERE id = $1', [userId])
   const target = rows[0]
   if (!target) throw notFound('Pengguna tidak ditemukan')
   if (target.role === 'admin') throw forbidden('Akun admin tidak boleh diubah, termasuk akun sendiri')
@@ -90,7 +78,7 @@ export async function changeUserStatus(
   const updated = await query<UserRow>(
     `UPDATE users SET account_status = $2, updated_at = now()
      WHERE id = $1
-     RETURNING id, full_name, email, phone_number, avatar_url, role, account_status, created_at`,
+     RETURNING ${USER_COLUMNS}`,
     [userId, accountStatus],
   )
   return updated.rows[0] as UserRow
@@ -112,9 +100,7 @@ export interface ReviewPropertyItem {
   cover_image_url: string | null
 }
 
-export async function listPropertiesForReview(
-  status: VerificationStatus,
-): Promise<ReviewPropertyItem[]> {
+export async function listPropertiesForReview(status: VerificationStatus): Promise<ReviewPropertyItem[]> {
   const { rows } = await query<ReviewPropertyItem>(
     `SELECT p.id, p.name, p.city, p.address, p.property_type, p.verification_status,
             p.rejection_note,
@@ -140,13 +126,13 @@ export interface VerifyPropertyInput {
 
 export async function verifyProperty(propertyId: string, input: VerifyPropertyInput) {
   return withTransaction(async (client) => {
-    const { rows } = await client.query<{ id: string; verification_status: VerificationStatus }>(
-      'SELECT id, verification_status FROM properties WHERE id = $1 FOR UPDATE',
+    const { rows } = await client.query<{ verification_status: VerificationStatus }>(
+      'SELECT verification_status FROM properties WHERE id = $1 FOR UPDATE',
       [propertyId],
     )
-    const property = rows[0]
-    if (!property) throw notFound('Properti tidak ditemukan')
-    if (property.verification_status === 'approved' && input.action === 'approve') {
+    const properti = rows[0]
+    if (!properti) throw notFound('Properti tidak ditemukan')
+    if (properti.verification_status === 'approved' && input.action === 'approve') {
       throw conflict('Properti sudah berstatus approved')
     }
 
@@ -156,7 +142,7 @@ export async function verifyProperty(propertyId: string, input: VerifyPropertyIn
        SET verification_status = $2, rejection_note = $3, updated_at = now()
        WHERE id = $1
        RETURNING id, name, city, verification_status, rejection_note`,
-      [propertyId, target, input.action === 'reject' ? input.note : null],
+      [propertyId, target, input.action === 'reject' ? input.note ?? null : null],
     )
     return updated.rows[0]
   })

@@ -15,18 +15,17 @@ export interface OwnerDashboard {
   occupancy_rate: number
 }
 
-type DashboardStats = Omit<OwnerDashboard, 'revenue_this_month' | 'occupancy_rate'>
-
 // Semua hitungan memakai agregasi SQL, bukan loop di JavaScript.
 export async function getOwnerDashboard(ownerId: string): Promise<OwnerDashboard> {
   await withTransaction(async (client) => {
     await expireStaleBookings(client)
   })
 
-  const { rows } = await query<DashboardStats>(
+  const { rows } = await query<OwnerDashboard>(
     `SELECT
        (SELECT count(*)::int FROM properties WHERE owner_id = $1) AS total_properties,
-       (SELECT count(*)::int FROM properties WHERE owner_id = $1 AND verification_status = 'approved') AS approved_properties,
+       (SELECT count(*)::int FROM properties
+          WHERE owner_id = $1 AND verification_status = 'approved') AS approved_properties,
        (SELECT count(*)::int FROM rooms r JOIN properties p ON p.id = r.property_id
           WHERE p.owner_id = $1 AND r.status <> 'INACTIVE') AS total_rooms,
        (SELECT count(*)::int FROM rooms r JOIN properties p ON p.id = r.property_id
@@ -46,16 +45,11 @@ export async function getOwnerDashboard(ownerId: string): Promise<OwnerDashboard
     [ownerId],
   )
 
-  const stats = rows[0] as DashboardStats
+  const stats = rows[0] as Omit<OwnerDashboard, 'revenue_this_month' | 'occupancy_rate'>
   const revenue = await sumRevenueThisMonth(ownerId)
+  // Persentase kamar terisi, satu angka di belakang koma.
   const occupancy =
-    stats.total_rooms === 0
-      ? 0
-      : Math.round((stats.occupied_rooms / stats.total_rooms) * 1000) / 10
+    stats.total_rooms === 0 ? 0 : Math.round((stats.occupied_rooms / stats.total_rooms) * 1000) / 10
 
-  return {
-    ...stats,
-    revenue_this_month: Number(revenue),
-    occupancy_rate: occupancy,
-  }
+  return { ...stats, revenue_this_month: Number(revenue), occupancy_rate: occupancy }
 }

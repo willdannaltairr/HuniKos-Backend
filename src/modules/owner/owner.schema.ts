@@ -40,6 +40,13 @@ export const roomUpdateSchema = roomSchema.extend({
   }).optional(),
 })
 
+// Catatan wajib (min 3 karakter) saat menolak.
+function catatanWajibSaatMenolak(value: { action: string; note?: string }, ctx: z.RefinementCtx) {
+  if (value.action === 'reject' && (value.note ?? '').trim().length < 3) {
+    ctx.addIssue({ code: 'custom', path: ['note'], message: 'Catatan wajib diisi minimal 3 karakter saat menolak' })
+  }
+}
+
 export const decisionSchema = z
   .object({
     action: z.enum(['approve', 'reject'], { errorMap: () => ({ message: 'Aksi harus approve atau reject' }) }),
@@ -56,19 +63,13 @@ export const verifyPaymentSchema = z
     action: z.enum(['approve', 'reject'], { errorMap: () => ({ message: 'Aksi harus approve atau reject' }) }),
     note: optionalText(300, 'Catatan'),
   })
-  .superRefine((value, ctx) => {
-    if (value.action === 'reject' && (value.note ?? '').trim().length < 3) {
-      ctx.addIssue({ code: 'custom', path: ['note'], message: 'Catatan wajib diisi minimal 3 karakter saat menolak' })
-    }
-  })
+  .superRefine(catatanWajibSaatMenolak)
 
 export const imageRoomSchema = z.object({
   room_id: z.string().uuid('Format ID kamar tidak valid').optional(),
 })
 
-// Rute gambar memakai nama parameter `imageId`, bukan `id`, jadi butuh skema sendiri.
+// Rute gambar memakai nama parameter imageId, bukan id.
 export const imageIdParamSchema = z.object({
   imageId: z.string().uuid('Format ID gambar tidak valid'),
 })
-
-export { z }

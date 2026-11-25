@@ -21,20 +21,31 @@ router.get('/dashboard', async (req, res) => {
 })
 
 router.get('/users', validate(userListQuerySchema, 'query'), async (req, res) => {
-  const { users, meta } = await listUsers(req.validated.query)
-  paginated(res, users, meta)
+  const filters = req.validated.query
+  const { users, total } = await listUsers(filters)
+  paginated(res, users, { page: filters.page, limit: filters.limit, total })
 })
 
-router.patch('/users/:id/status', validate(idParamSchema, 'params'), validate(accountStatusSchema), async (req, res) => {
-  ok(res, await changeUserStatus(req.validated.params.id, req.body.account_status), 'Status akun diperbarui')
-})
+router.patch(
+  '/users/:id/status',
+  validate(idParamSchema, 'params'),
+  validate(accountStatusSchema),
+  async (req, res) => {
+    ok(res, await changeUserStatus(req.validated.params.id, req.body.account_status), 'Status akun diperbarui')
+  },
+)
 
 router.get('/properties', validate(propertyReviewQuerySchema, 'query'), async (req, res) => {
   ok(res, await listPropertiesForReview(req.validated.query.verification_status), 'OK')
 })
 
-router.patch('/properties/:id/verification', validate(idParamSchema, 'params'), validate(verificationSchema), async (req, res) => {
-  ok(res, await verifyProperty(req.validated.params.id, req.body), 'Verifikasi properti disimpan')
-})
+router.patch(
+  '/properties/:id/verification',
+  validate(idParamSchema, 'params'),
+  validate(verificationSchema),
+  async (req, res) => {
+    ok(res, await verifyProperty(req.validated.params.id, req.body), 'Verifikasi properti disimpan')
+  },
+)
 
 export default router
