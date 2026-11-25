@@ -52,9 +52,9 @@ isinya termasuk baris `-----BEGIN CERTIFICATE-----` dan `-----END CERTIFICATE---
 Kalau kolomnya menolak baris baru, ganti setiap baris baru dengan `\n` — kode di
 `src/config/db.ts` mengubahnya kembali menjadi baris baru.
 
-**Mengapa `STORAGE_DRIVER` harus `cloudinary`:** sistem berkas container Railway bersifat
-sementara. Setiap deploy ulang menghapus isi `uploads/`, sehingga foto properti dan bukti
-transfer akan hilang bila disimpan lokal.
+**Mengapa gambar disimpan di Cloudinary:** aplikasi tidak menyimpan file di disk server,
+semua foto properti, bukti transfer, dan avatar diunggah ke Cloudinary. Dengan begitu
+gambar tetap ada walaupun container di-deploy ulang.
 
 ## 3. Buka domain publik
 
