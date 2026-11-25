@@ -14,6 +14,7 @@ import roomRoutes from './modules/rooms/rooms.routes.js'
 import bookingRoutes from './modules/bookings/bookings.routes.js'
 import maintenanceRoutes from './modules/maintenance/maintenance.routes.js'
 import { tenantPaymentRouter, tenantPaymentListRouter } from './modules/payments/payments.routes.js'
+import { midtransNotificationRouter, midtransRouter } from './modules/payments/midtrans.routes.js'
 import ownerRoutes from './modules/owner/owner.routes.js'
 import adminRoutes from './modules/admin/admin.routes.js'
 
@@ -53,6 +54,9 @@ export function createApp() {
   app.use('/api/rooms', roomRoutes)
   app.use('/api/bookings', bookingRoutes)
   app.use('/api/bookings', tenantPaymentRouter)
+  // Midtrans Dipasang setelah rute lama agar rute bayar Snap tidak tertutup.
+  app.use('/api/bookings', midtransRouter)
+  app.use('/api/midtrans', midtransNotificationRouter)
   app.use('/api/payments', tenantPaymentListRouter)
   app.use('/api/maintenance', maintenanceRoutes)
   app.use('/api/owner', ownerRoutes)
