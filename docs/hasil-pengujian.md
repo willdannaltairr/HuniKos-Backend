@@ -124,4 +124,4 @@ Tiga masalah ini muncul dari pengujian, bukan dari membaca kode saja.
 
 - **Pengujian beban.** Tidak ada uji jumlah permintaan bersamaan di luar dua booking
   paralel di atas.
-- **Deploy produksi.** Pengujian dijalankan lokal; deploy ke Railway belum dicoba.
+- **Deploy produksi.** Pengujian dijalankan lokal; deploy ke Vercel belum dicoba.

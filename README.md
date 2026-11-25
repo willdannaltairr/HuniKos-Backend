@@ -6,7 +6,7 @@ website Next.js dan aplikasi mobile Flutter.
 - Kontrak API + database (sumber kebenaran): [`docs/00_KONTRAK_BERSAMA.md`](docs/00_KONTRAK_BERSAMA.md)
 - Aturan branch & commit: [`AGENTS.md`](AGENTS.md) — panduan lengkap di [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md)
 - Hasil pengujian yang benar-benar dijalankan: [`docs/hasil-pengujian.md`](docs/hasil-pengujian.md)
-- Panduan deploy backend: [`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md)
+- Panduan deploy backend: [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md)
 - Panduan database: [`docs/DEPLOY_AIVEN.md`](docs/DEPLOY_AIVEN.md)
 
 ## Stack
@@ -20,7 +20,7 @@ website Next.js dan aplikasi mobile Flutter.
 | Validasi | `zod@3` |
 | Auth | JWT HS256 + `bcryptjs` |
 | Upload | `multer` → **Cloudinary** (tidak ada file yang disimpan di disk server) |
-| Hosting | Railway |
+| Hosting | Vercel |
 
 ## Struktur repo
 
@@ -32,16 +32,19 @@ website Next.js dan aplikasi mobile Flutter.
 ├─ docs/
 │  ├─ 00_KONTRAK_BERSAMA.md      # kontrak API + database
 │  ├─ DEPLOY_AIVEN.md            # panduan database ke Aiven
-│  ├─ DEPLOY_RAILWAY.md          # panduan deploy backend ke Railway
+│  ├─ DEPLOY_VERCEL.md           # panduan deploy backend ke Vercel
 │  ├─ GIT_WORKFLOW.md            # alur branch, commit, issue, PR
-│  ├─ hasil-pengujian.md         # hasil uji nyata + kasus negatif
-│  ├─ schema.sql                 # 10 tabel + index, siap dijalankan di psql/pgAdmin
-│  └─ seed.sql                   # akun uji + data contoh, siap dijalankan di psql/pgAdmin
+│  └─ hasil-pengujian.md         # hasil uji nyata + kasus negatif
+├─ index.ts                     # titik masuk Vercel (mengekspor aplikasi Express)
+├─ database/                     # semua berkas database ada di sini
+│  ├─ migrations/                # 1_users.sql ... 12_midtrans_payments.sql
+│  ├─ schema.sql                 # skema lengkap, siap dijalankan di pgAdmin
+│  ├─ seed.sql                   # akun uji + data contoh, siap dijalankan di pgAdmin
+│  └─ scripts/
+│     ├─ migrate.ts              # jalankan migration (membaca SSL dari .env)
+│     └─ seed.ts                 # data contoh, aman dijalankan berulang
 ├─ api.http                      # koleksi REST Client: semua endpoint
-├─ migrations/                   # migration node-pg-migrate
-├─ scripts/
-│  ├─ migrate.ts                 # jalankan migration (membaca SSL dari .env)
-│  └─ seed.ts                    # data contoh, aman dijalankan berulang
+├─ vercel.json                   # konfigurasi serverless function Vercel
 ├─ src/
 │  ├─ app.ts                     # susun middleware & route
 │  ├─ server.ts                  # listen + cek koneksi database
@@ -84,7 +87,7 @@ CLOUDINARY_API_SECRET=<api secret>
 ```
 
 `DB_CA_CERT_PATH` dipakai bila sertifikat Aiven ada sebagai berkas di `certs/`.
-Kalau server tidak punya berkasnya (mis. Railway), isi `DB_CA_CERT` dengan seluruh
+Kalau server tidak punya berkasnya (mis. Vercel), isi `DB_CA_CERT` dengan seluruh
 isi `ca.pem`.
 
 Untuk PostgreSQL lokal tanpa SSL, kosongkan kedua variabel CA dan cukup isi
@@ -172,15 +175,20 @@ PORT=3100 LOGIN_RATE_LIMIT=200 npm start
 
 ## Deploy
 
-Panduan lengkap ada di [`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md), dan database di
+Panduan lengkap ada di [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md), dan database di
 [`docs/DEPLOY_AIVEN.md`](docs/DEPLOY_AIVEN.md). Ringkasnya:
 
-- Railway **deploy dari repo GitHub**, Root Directory dikosongkan; build dan start diambil
-  dari `package.json` (`npm install` / `npm start`).
-- Health check path `/api/health`, domain publik dibuat lewat Settings → Networking.
-- `NODE_ENV=production`, `DATABASE_URL` dari Aiven, `DB_CA_CERT` berisi isi `ca.pem`.
+- Vercel **import repo GitHub**; Framework Preset *Other*, Root Directory dan Build Command
+  dikosongkan.
+- `index.ts` di root mengekspor aplikasi Express; Vercel mendeteksinya otomatis. `src/server.ts`
+  hanya dipakai di lokal.
+- **Production Branch** di Vercel harus branch yang berisi kode ini (`develop`), bukan `main`
+  yang isinya hanya dokumen. Ini penyebab paling sering muncul 404.
+- Health check path `/api/health`.
+- `NODE_ENV=production`, `DATABASE_URL` dari Aiven, dan **`DB_CA_CERT`** berisi isi `ca.pem`
+  (bukan `DB_CA_CERT_PATH`, karena berkasnya tidak ikut terunggah).
 - Tiga kunci Cloudinary wajib diisi, karena gambar tidak disimpan di disk server.
-- `PORT` tidak perlu diisi; Railway menyuntikkannya sendiri.
+- `PORT` tidak perlu diisi; Vercel mengurusnya sendiri.
 
 ## Alur kerja branch
 
