@@ -12,9 +12,9 @@
     "start": "tsx src/server.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "migrate:up": "tsx scripts/migrate.ts up",
-    "migrate:down": "tsx scripts/migrate.ts down",
-    "seed": "tsx scripts/seed.ts"
+    "migrate:up": "tsx database/scripts/migrate.ts up",
+    "migrate:down": "tsx database/scripts/migrate.ts down",
+    "seed": "tsx database/scripts/seed.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
