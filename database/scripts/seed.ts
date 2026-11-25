@@ -1,7 +1,7 @@
 // Mengisi data contoh HUNIKOS. Aman dijalankan berulang kali:
 // setiap tabel dicek dulu, dan semua insert memakai ON CONFLICT DO NOTHING.
 import bcrypt from 'bcryptjs'
-import { pool } from '../src/config/db.js'
+import { pool } from '../../src/config/db.js'
 import type { PoolClient } from 'pg'
 
 // Tanggal contoh dihitung dari hari ini supaya tampilan selalu relevan.

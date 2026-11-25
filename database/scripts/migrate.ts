@@ -1,7 +1,7 @@
 // Menjalankan migration dengan SSL yang sama seperti aplikasi.
 // CLI node-pg-migrate tidak membaca sertifikat CA, padahal Aiven mewajibkan TLS.
 import { runner } from 'node-pg-migrate'
-import { env } from '../src/config/env.js'
+import { env } from '../../src/config/env.js'
 
 const arah = process.argv[2] === 'down' ? 'down' : 'up'
 
@@ -11,7 +11,7 @@ try {
       connectionString: env.databaseUrl,
       ssl: env.dbCaCert ? { ca: env.dbCaCert, rejectUnauthorized: true } : false,
     },
-    dir: 'migrations',
+    dir: 'database/migrations',
     direction: arah,
     migrationsTable: 'pgmigrations',
   })
