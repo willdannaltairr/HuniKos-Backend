@@ -14,7 +14,7 @@ async function start() {
 
   const app = createApp()
   const server = app.listen(env.port, () => {
-    console.log(`HUNIKOS API berjalan di ${env.baseUrl} (${env.nodeEnv})`)
+    console.log(`HUNIKOS API berjalan di http://localhost:${env.port} (${env.nodeEnv})`)
   })
 
   const shutdown = (signal: NodeJS.Signals) => {

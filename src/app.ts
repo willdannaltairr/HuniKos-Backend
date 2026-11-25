@@ -5,7 +5,6 @@ import morgan from 'morgan'
 import { env } from './config/env.js'
 import { checkConnection } from './config/db.js'
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js'
-import { UPLOAD_DIR } from './utils/storage.js'
 import { ok } from './utils/response.js'
 import authRoutes from './modules/auth/auth.routes.js'
 import userRoutes from './modules/users/users.routes.js'
@@ -21,31 +20,26 @@ import adminRoutes from './modules/admin/admin.routes.js'
 export function createApp() {
   const app = express()
 
-  app.use(helmet({
-    // Gambar disajikan dari domain backend dan dimuat oleh website/mobile lain.
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }))
+  // Gambar dimuat oleh website dan aplikasi mobile dari domain lain.
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 
-  app.use(cors({
-    origin(origin, callback) {
-      // Permintaan tanpa origin (cURL, aplikasi mobile) tetap dilayani.
-      if (!origin || env.corsOrigins.includes(origin)) return callback(null, true)
-      // `flutter run -d chrome` memakai port acak tiap kali dijalankan, jadi saat
-      // pengembangan semua origin localhost diterima. Produksi tetap whitelist.
-      if (!env.isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-        return callback(null, true)
-      }
-      return callback(null, false)
-    },
-  }))
+  app.use(
+    cors({
+      origin(origin, callback) {
+        // Tanpa origin (cURL, aplikasi mobile) permintaan tetap dilayani.
+        if (!origin || env.corsOrigins.includes(origin)) return callback(null, true)
+        // flutter run -d chrome memakai port acak tiap kali dijalankan.
+        if (!env.isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+          return callback(null, true)
+        }
+        return callback(null, false)
+      },
+    }),
+  )
 
   if (!env.isProduction) app.use(morgan('dev'))
 
   app.use(express.json({ limit: '100kb' }))
-
-  if (env.storageDriver === 'local') {
-    app.use('/uploads', express.static(UPLOAD_DIR))
-  }
 
   app.get('/api/health', async (req, res) => {
     await checkConnection()

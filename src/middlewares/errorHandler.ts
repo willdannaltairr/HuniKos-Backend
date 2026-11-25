@@ -3,14 +3,8 @@ import { HttpError } from '../utils/HttpError.js'
 import { env } from '../config/env.js'
 import type { FieldError } from '../types/domain.js'
 
-// Bentuk error PostgreSQL yang relevan; selain kode di bawah dianggap error tak terduga.
-interface DatabaseError {
-  code?: string
-  message?: string
-}
-
-// Diterjemahkan dari SQLSTATE PostgreSQL ke kode HTTP kontrak bagian 6.
-function translateDatabaseError(error: DatabaseError): HttpError | null {
+// Kode error PostgreSQL diterjemahkan ke kode HTTP sesuai kontrak.
+function translateDatabaseError(error: { code?: string }): HttpError | null {
   if (error.code === '23505') return new HttpError(409, 'Data sudah ada, gunakan nilai lain')
   if (error.code === '23001' || error.code === '23503') {
     return new HttpError(409, 'Data masih dipakai oleh data lain')
@@ -27,23 +21,23 @@ export function notFoundHandler(req: Request, res: Response): void {
   })
 }
 
-// Express mengenali error handler dari jumlah argumennya (4), jadi `next` wajib ada.
+// Express mengenali error handler dari jumlah argumennya (4), jadi next wajib ada.
 export function errorHandler(
   error: unknown,
   req: Request,
   res: Response,
   _next: NextFunction,
 ): void {
-  let finalError: HttpError | null = error instanceof HttpError ? error : null
+  let finalError = error instanceof HttpError ? error : null
 
   if (!finalError && error instanceof SyntaxError && (error as { status?: number }).status === 400) {
     finalError = new HttpError(400, 'Format JSON tidak valid')
   } else if (!finalError) {
-    finalError = translateDatabaseError(error as DatabaseError)
+    finalError = translateDatabaseError(error as { code?: string })
   }
 
   if (!finalError) {
-    // Detail hanya masuk log; client cukup menerima pesan generik.
+    // Detail hanya masuk log; client menerima pesan generik.
     if (!env.isProduction) console.error(error)
     else console.error(`${req.method} ${req.originalUrl} -> ${(error as Error).message}`)
     res.status(500).json({ success: false, message: 'Terjadi kesalahan pada server' })
@@ -54,7 +48,7 @@ export function errorHandler(
     success: false,
     message: finalError.message,
   }
-  // Kode 422 selalu menyertakan daftar errors, walau kosong, sesuai kontrak.
+  // Kode 422 selalu menyertakan daftar errors, walau kosong.
   if (finalError.statusCode === 422) payload.errors = finalError.errors ?? []
 
   res.status(finalError.statusCode).json(payload)
