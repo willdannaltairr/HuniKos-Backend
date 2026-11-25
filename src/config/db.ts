@@ -4,41 +4,37 @@ import { env } from './env.js'
 
 const { Pool, types } = pg
 
-// Tanpa parser ini uang menjadi string dan tanggal bergeser satu hari karena zona waktu.
-types.setTypeParser(1700, (value: string | null) => (value === null ? null : Number(value)))
-types.setTypeParser(1082, (value: string) => value)
-types.setTypeParser(20, (value: string | null) => (value === null ? null : Number(value)))
-
-const ssl = env.dbCaCert
-  ? { ca: env.dbCaCert.replace(/\\n/g, '\n'), rejectUnauthorized: true }
-  : false
+// Tanpa pengaturan ini uang terbaca sebagai teks dan tanggal bisa bergeser.
+types.setTypeParser(1700, (value) => (value === null ? null : Number(value))) // NUMERIC
+types.setTypeParser(1082, (value) => value) // DATE tetap teks YYYY-MM-DD
+types.setTypeParser(20, (value) => (value === null ? null : Number(value))) // COUNT / BIGINT
 
 export const pool = new Pool({
   connectionString: env.databaseUrl,
   max: env.dbPoolMax,
-  ssl,
+  ssl: env.dbCaCert ? { ca: env.dbCaCert, rejectUnauthorized: true } : false,
 })
 
-pool.on('error', (error: Error) => {
+pool.on('error', (error) => {
   console.error('Koneksi database bermasalah:', error.message)
 })
 
-/** Query biasa; bentuk baris ditentukan pemanggil lewat parameter generik. */
+// Query biasa. Semua nilai dikirim lewat parameter ($1, $2, ...), tidak pernah disambung ke SQL.
 export function query<T extends QueryResultRow = QueryResultRow>(
-  text: string,
-  params?: unknown[],
+  sql: string,
+  params: unknown[] = [],
 ): Promise<QueryResult<T>> {
-  return pool.query<T>(text, params)
+  return pool.query<T>(sql, params)
 }
 
-// Seluruh langkah di dalam work() dijalankan dalam satu transaksi.
-export async function withTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+// Menjalankan beberapa query sebagai satu transaksi: berhasil semua, atau dibatalkan semua.
+export async function withTransaction<T>(kerja: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const result = await work(client)
+    const hasil = await kerja(client)
     await client.query('COMMIT')
-    return result
+    return hasil
   } catch (error) {
     await client.query('ROLLBACK')
     throw error

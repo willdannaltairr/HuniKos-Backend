@@ -1,51 +1,37 @@
 import 'dotenv/config'
-import { existsSync } from 'node:fs'
-import { config as loadEnv } from 'dotenv'
-import { loadCaCert } from './caCert.js'
+import { readFileSync } from 'node:fs'
 
-// Struktur lama menyimpan .env di dalam folder api/. Kalau .env di root belum ada,
-// nilai dibaca dari sana supaya `npm run dev` tetap jalan tanpa memindahkan berkas.
-if (!process.env.DATABASE_URL && existsSync('api/.env')) {
-  loadEnv({ path: 'api/.env' })
-}
-
-const required = ['DATABASE_URL', 'JWT_SECRET'] as const
-
-for (const name of required) {
-  if (!process.env[name]) {
-    console.error(`Environment ${name} belum diisi. Salin .env.example menjadi .env lalu lengkapi.`)
+// Ambil variabel wajib; hentikan aplikasi kalau belum diisi.
+function wajib(nama: string): string {
+  const nilai = process.env[nama]
+  if (!nilai) {
+    console.error(`Environment ${nama} belum diisi. Salin .env.example menjadi .env lalu lengkapi.`)
     process.exit(1)
   }
+  return nilai
 }
 
-const jwtSecret = process.env.JWT_SECRET as string
+// Sertifikat CA Aiven. Boleh berupa isi langsung (DB_CA_CERT) atau path berkas (DB_CA_CERT_PATH).
+function bacaSertifikat(): string | null {
+  if (process.env.DB_CA_CERT) return process.env.DB_CA_CERT.replace(/\\n/g, '\n')
+  if (process.env.DB_CA_CERT_PATH) return readFileSync(process.env.DB_CA_CERT_PATH, 'utf8')
+  return null
+}
+
+const databaseUrl = wajib('DATABASE_URL')
+const jwtSecret = wajib('JWT_SECRET')
+const nodeEnv = process.env.NODE_ENV ?? 'development'
+const dbCaCert = bacaSertifikat()
 
 if (jwtSecret.length < 32) {
   console.error('JWT_SECRET minimal 32 karakter.')
   process.exit(1)
 }
 
-const nodeEnv = process.env.NODE_ENV ?? 'development'
-const storageDriver = process.env.STORAGE_DRIVER ?? 'local'
-
-if (storageDriver === 'cloudinary') {
-  for (const name of ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']) {
-    if (!process.env[name]) {
-      console.error(`Environment ${name} wajib diisi bila STORAGE_DRIVER=cloudinary.`)
-      process.exit(1)
-    }
-  }
-}
-
-const databaseUrl = process.env.DATABASE_URL as string
-const isLocalDatabase = /@(localhost|127\.0\.0\.1)[:/]/.test(databaseUrl)
-const caCert = loadCaCert()
-
-// Produksi wajib SSL; tanpa sertifikat CA koneksi Aiven akan ditolak.
-if (nodeEnv === 'production' && !caCert && !isLocalDatabase) {
-  console.error(
-    'Sertifikat CA wajib diisi di produksi: set DB_CA_CERT_PATH ke file ca.pem dari Aiven, atau DB_CA_CERT dengan isinya.',
-  )
+// Produksi wajib memakai SSL; tanpa CA, koneksi ke Aiven akan ditolak.
+const databaseLokal = /@(localhost|127\.0\.0\.1)[:/]/.test(databaseUrl)
+if (nodeEnv === 'production' && !dbCaCert && !databaseLokal) {
+  console.error('Sertifikat CA wajib diisi di produksi (DB_CA_CERT atau DB_CA_CERT_PATH).')
   process.exit(1)
 }
 
@@ -54,17 +40,20 @@ export const env = {
   isProduction: nodeEnv === 'production',
   port: Number(process.env.PORT ?? 3000),
   databaseUrl,
-  dbCaCert: caCert,
+  dbCaCert,
   dbPoolMax: Number(process.env.DB_POOL_MAX ?? 5),
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+  // Daftar origin yang boleh mengakses API, dipisah koma.
   corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
-  baseUrl: (process.env.BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`).replace(/\/$/, ''),
-  storageDriver,
-  // Batas percobaan login per IP per 15 menit. Bisa dinaikkan saat menjalankan uji otomatis,
-  // yang butuh banyak login dari satu alamat.
+  // Batas percobaan login per IP per 15 menit.
   loginRateLimit: Number(process.env.LOGIN_RATE_LIMIT ?? 10),
+  cloudinary: {
+    cloudName: wajib('CLOUDINARY_CLOUD_NAME'),
+    apiKey: wajib('CLOUDINARY_API_KEY'),
+    apiSecret: wajib('CLOUDINARY_API_SECRET'),
+  },
 } as const
