@@ -8,7 +8,8 @@ import type { PaymentStatus } from '../../types/domain.js'
 
 const PAYMENT_SELECT = `
   SELECT pay.id, pay.booking_id, pay.amount, pay.proof_url, pay.status, pay.note,
-         pay.verified_at, pay.created_at,
+         pay.verified_at, pay.created_at, pay.midtrans_order_id,
+         pay.midtrans_transaction_status, pay.midtrans_payment_type,
          b.booking_code, r.room_number, p.name AS property_name, u.full_name AS tenant_name
   FROM payments pay
   JOIN bookings b ON b.id = pay.booking_id
@@ -29,6 +30,9 @@ export interface Payment {
   room_number: string
   property_name: string
   tenant_name: string
+  midtrans_order_id: string | null
+  midtrans_transaction_status: string | null
+  midtrans_payment_type: string | null
 }
 
 export async function listTenantPayments(tenantId: string): Promise<Payment[]> {
