@@ -135,8 +135,10 @@ export async function verifyPayment(
       booking_status: string
       room_id: string
       expires_at: Date | null
+      midtrans_order_id: string | null
     }>(
-      `SELECT pay.id, pay.status, pay.booking_id, b.status AS booking_status, b.room_id, b.expires_at
+      `SELECT pay.id, pay.status, pay.booking_id, b.status AS booking_status,
+              b.room_id, b.expires_at, pay.midtrans_order_id
        FROM payments pay
        JOIN bookings b ON b.id = pay.booking_id
        JOIN rooms r ON r.id = b.room_id
@@ -149,6 +151,13 @@ export async function verifyPayment(
     if (!payment) throw notFound('Pembayaran tidak ditemukan')
     if (payment.status !== 'PENDING') {
       throw conflict(`Pembayaran berstatus ${payment.status} sudah diproses`)
+    }
+    // Pembayaran Midtrans hanya boleh berubah lewat webhook bersignature atau
+    // sinkronisasi status. Pemilik tidak boleh menyetujuinya secara manual.
+    if (payment.midtrans_order_id) {
+      throw conflict(
+        'Pembayaran Midtrans diverifikasi otomatis, tidak bisa diverifikasi manual',
+      )
     }
 
     if (input.action === 'reject') {
