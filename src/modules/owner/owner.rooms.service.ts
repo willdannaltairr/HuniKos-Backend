@@ -1,9 +1,9 @@
-import { withTransaction } from '../../config/db.js'
 import type { PoolClient } from 'pg'
+import { query, withTransaction } from '../../config/db.js'
 import { conflict, notFound } from '../../utils/HttpError.js'
-import { countActiveBookings, syncRoomStatus } from '../../utils/bookingRules.js'
+import { countActiveBookings } from '../../utils/bookingRules.js'
 import { listRoomsByProperty } from '../rooms/rooms.service.js'
-import type { RoomItem, RoomRow } from '../rooms/rooms.service.js'
+import type { RoomItem } from '../rooms/rooms.service.js'
 import type { RoomStatus } from '../../types/domain.js'
 
 export interface RoomInput {
@@ -18,13 +18,9 @@ export interface RoomInput {
   status?: RoomStatus
 }
 
-async function assertOwnedRoom(
-  client: PoolClient,
-  roomId: string,
-  ownerId: string,
-): Promise<RoomRow> {
-  const { rows } = await client.query<RoomRow>(
-    `SELECT r.* FROM rooms r
+async function assertOwnedRoom(client: PoolClient, roomId: string, ownerId: string) {
+  const { rows } = await client.query<{ id: string; property_id: string; status: RoomStatus }>(
+    `SELECT r.id, r.property_id, r.status FROM rooms r
      JOIN properties p ON p.id = r.property_id
      WHERE r.id = $1 AND p.owner_id = $2
      FOR UPDATE OF r`,
@@ -34,11 +30,8 @@ async function assertOwnedRoom(
   return rows[0]
 }
 
-async function replaceFacilities(
-  client: PoolClient,
-  roomId: string,
-  facilityIds?: string[],
-): Promise<void> {
+// Ganti seluruh daftar fasilitas kamar dengan yang baru.
+async function replaceFacilities(client: PoolClient, roomId: string, facilityIds?: string[]) {
   await client.query('DELETE FROM room_facilities WHERE room_id = $1', [roomId])
   if (!facilityIds?.length) return
 
@@ -52,23 +45,20 @@ async function replaceFacilities(
 
   for (const { id } of valid.rows) {
     await client.query(
-      'INSERT INTO room_facilities (room_id, facility_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      'INSERT INTO room_facilities (room_id, facility_id) VALUES ($1, $2)',
       [roomId, id],
     )
   }
 }
 
 export async function listOwnerRooms(ownerId: string, propertyId: string): Promise<RoomItem[]> {
-  const owned = await withTransaction(async (client) => {
-    const { rows } = await client.query(
-      'SELECT id FROM properties WHERE id = $1 AND owner_id = $2',
-      [propertyId, ownerId],
-    )
-    return rows[0]
-  })
-  if (!owned) throw notFound('Properti tidak ditemukan')
+  const { rows } = await query(
+    'SELECT id FROM properties WHERE id = $1 AND owner_id = $2',
+    [propertyId, ownerId],
+  )
+  if (!rows[0]) throw notFound('Properti tidak ditemukan')
 
-  return listRoomsByProperty(propertyId, { includeInactive: true })
+  return listRoomsByProperty(propertyId, true)
 }
 
 export async function createRoom(
@@ -77,17 +67,17 @@ export async function createRoom(
   input: RoomInput,
 ): Promise<string> {
   return withTransaction(async (client) => {
-    const owned = await client.query(
+    const milikSendiri = await client.query(
       'SELECT id FROM properties WHERE id = $1 AND owner_id = $2',
       [propertyId, ownerId],
     )
-    if (!owned.rows[0]) throw notFound('Properti tidak ditemukan')
+    if (!milikSendiri.rows[0]) throw notFound('Properti tidak ditemukan')
 
-    const duplicate = await client.query(
+    const kembar = await client.query(
       'SELECT 1 FROM rooms WHERE property_id = $1 AND room_number = $2',
       [propertyId, input.room_number],
     )
-    if ((duplicate.rowCount ?? 0) > 0) throw conflict('Nomor kamar sudah dipakai pada properti ini')
+    if ((kembar.rowCount ?? 0) > 0) throw conflict('Nomor kamar sudah dipakai pada properti ini')
 
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO rooms
@@ -113,23 +103,22 @@ export async function updateRoom(
 ): Promise<string> {
   return withTransaction(async (client) => {
     const room = await assertOwnedRoom(client, roomId, ownerId)
+    const sistemMengatur = room.status === 'RESERVED' || room.status === 'OCCUPIED'
 
-    if (input.status) {
+    if (input.status && sistemMengatur) {
       // RESERVED/OCCUPIED hanya boleh diubah sistem.
-      if (['RESERVED', 'OCCUPIED'].includes(room.status) && input.status !== 'AVAILABLE') {
+      if (input.status !== 'AVAILABLE') {
         throw conflict(`Status kamar ${room.status} hanya boleh diubah sistem`)
       }
-      if (['RESERVED', 'OCCUPIED'].includes(room.status)) {
-        const active = await countActiveBookings(client, roomId)
-        if (active > 0) throw conflict('Kamar masih punya booking aktif')
-      }
+      const aktif = await countActiveBookings(client, roomId)
+      if (aktif > 0) throw conflict('Kamar masih punya booking aktif')
     }
 
-    const duplicate = await client.query(
+    const kembar = await client.query(
       'SELECT 1 FROM rooms WHERE property_id = $1 AND room_number = $2 AND id <> $3',
       [room.property_id, input.room_number, roomId],
     )
-    if ((duplicate.rowCount ?? 0) > 0) throw conflict('Nomor kamar sudah dipakai pada properti ini')
+    if ((kembar.rowCount ?? 0) > 0) throw conflict('Nomor kamar sudah dipakai pada properti ini')
 
     await client.query(
       `UPDATE rooms
@@ -152,13 +141,11 @@ export async function deleteRoom(ownerId: string, roomId: string): Promise<void>
   await withTransaction(async (client) => {
     await assertOwnedRoom(client, roomId, ownerId)
 
-    const used = await client.query('SELECT 1 FROM bookings WHERE room_id = $1 LIMIT 1', [roomId])
-    if ((used.rowCount ?? 0) > 0) {
+    const dipakai = await client.query('SELECT 1 FROM bookings WHERE room_id = $1 LIMIT 1', [roomId])
+    if ((dipakai.rowCount ?? 0) > 0) {
       throw conflict('Kamar tidak bisa dihapus karena punya riwayat booking')
     }
 
     await client.query('DELETE FROM rooms WHERE id = $1', [roomId])
   })
 }
-
-export { syncRoomStatus }

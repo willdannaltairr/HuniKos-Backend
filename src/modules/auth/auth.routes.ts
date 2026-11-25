@@ -9,7 +9,7 @@ import { registerUser, loginUser } from './auth.service.js'
 
 const router = Router()
 
-// Dibatasi per IP agar password tidak bisa ditebak berulang-ulang.
+// Dibatasi per IP supaya password tidak bisa ditebak berulang kali.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: env.loginRateLimit,

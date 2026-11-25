@@ -2,13 +2,8 @@ import type { PoolClient } from 'pg'
 import { withTransaction } from '../../config/db.js'
 import { conflict, notFound } from '../../utils/HttpError.js'
 import { expireStaleBookings, syncRoomStatus } from '../../utils/bookingRules.js'
-import { BOOKING_SELECT } from '../bookings/bookings.service.js'
+import { BOOKING_SELECT, toBooking } from '../bookings/bookings.service.js'
 import type { Booking, BookingRow } from '../bookings/bookings.service.js'
-
-function toBooking(row: BookingRow): Booking {
-  const { owner_id: _owner, tenant_id: _tenant, room_id: _room, ...booking } = row
-  return booking
-}
 
 async function loadOwnedBooking(
   client: PoolClient,
@@ -28,6 +23,21 @@ export interface DecisionInput {
   owner_note?: string
 }
 
+async function recordHistory(
+  client: PoolClient,
+  bookingId: string,
+  from: string,
+  to: string,
+  ownerId: string,
+  note: string | null,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO booking_status_histories (booking_id, from_status, to_status, changed_by, note)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [bookingId, from, to, ownerId, note],
+  )
+}
+
 export async function decideBooking(
   ownerId: string,
   bookingId: string,
@@ -42,6 +52,7 @@ export async function decideBooking(
     }
 
     if (input.action === 'approve') {
+      // Booking disetujui: penyewa punya waktu 24 jam untuk membayar.
       await client.query(
         `UPDATE bookings
          SET status = 'AWAITING_PAYMENT', expires_at = now() + interval '24 hours',
@@ -49,25 +60,18 @@ export async function decideBooking(
          WHERE id = $1`,
         [bookingId, input.owner_note ?? null],
       )
-      await client.query(
-        `INSERT INTO booking_status_histories (booking_id, from_status, to_status, changed_by, note)
-         VALUES ($1, 'PENDING', 'AWAITING_PAYMENT', $2, $3)`,
-        [bookingId, ownerId, input.owner_note ?? 'Booking disetujui pemilik'],
-      )
-      await client.query(
-        `UPDATE rooms SET status = 'RESERVED', updated_at = now() WHERE id = $1`,
-        [booking.room_id],
-      )
+      await recordHistory(client, bookingId, 'PENDING', 'AWAITING_PAYMENT', ownerId,
+        input.owner_note ?? 'Booking disetujui pemilik')
+      await client.query('UPDATE rooms SET status = $2, updated_at = now() WHERE id = $1', [
+        booking.room_id,
+        'RESERVED',
+      ])
     } else {
       await client.query(
         `UPDATE bookings SET status = 'REJECTED', owner_note = $2, updated_at = now() WHERE id = $1`,
-        [bookingId, input.owner_note],
+        [bookingId, input.owner_note ?? null],
       )
-      await client.query(
-        `INSERT INTO booking_status_histories (booking_id, from_status, to_status, changed_by, note)
-         VALUES ($1, 'PENDING', 'REJECTED', $2, $3)`,
-        [bookingId, ownerId, input.owner_note],
-      )
+      await recordHistory(client, bookingId, 'PENDING', 'REJECTED', ownerId, input.owner_note ?? null)
       await syncRoomStatus(client, booking.room_id)
     }
 
@@ -89,11 +93,7 @@ export async function completeBooking(ownerId: string, bookingId: string): Promi
       `UPDATE bookings SET status = 'COMPLETED', updated_at = now() WHERE id = $1`,
       [bookingId],
     )
-    await client.query(
-      `INSERT INTO booking_status_histories (booking_id, from_status, to_status, changed_by, note)
-       VALUES ($1, 'CONFIRMED', 'COMPLETED', $2, 'Masa sewa selesai')`,
-      [bookingId, ownerId],
-    )
+    await recordHistory(client, bookingId, 'CONFIRMED', 'COMPLETED', ownerId, 'Masa sewa selesai')
     await syncRoomStatus(client, booking.room_id)
 
     const { rows } = await client.query<BookingRow>(`${BOOKING_SELECT} WHERE b.id = $1`, [bookingId])

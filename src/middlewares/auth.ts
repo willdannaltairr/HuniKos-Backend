@@ -5,7 +5,7 @@ import { query } from '../config/db.js'
 import { unauthorized } from '../utils/HttpError.js'
 import type { UserRow } from '../types/domain.js'
 
-// Ambil token dari header Authorization: Bearer <token>.
+// Ambil token dari header "Authorization: Bearer <token>".
 function readToken(req: Request): string | null {
   const header = req.headers.authorization ?? ''
   if (!header.startsWith('Bearer ')) return null
@@ -13,7 +13,7 @@ function readToken(req: Request): string | null {
   return token || null
 }
 
-// User selalu dibaca ulang dari database supaya akun yang di-suspend langsung ditolak.
+// User dibaca ulang dari database supaya akun yang di-suspend langsung ditolak.
 async function loadUser(userId: string): Promise<UserRow | null> {
   const { rows } = await query<UserRow>(
     `SELECT id, full_name, email, phone_number, avatar_url, role, account_status, created_at
@@ -23,7 +23,6 @@ async function loadUser(userId: string): Promise<UserRow | null> {
   return rows[0] ?? null
 }
 
-// Payload JWT hanya berisi sub dan role sesuai kontrak bagian 6.
 interface TokenPayload {
   sub: string
   role: string
@@ -48,7 +47,8 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   return next()
 }
 
-// Tamu boleh lewat; token rusak tetap dianggap tamu, bukan error.
+// Untuk endpoint publik yang perilakunya berbeda bila sedang login.
+// Tamu boleh lewat; token rusak juga diperlakukan sebagai tamu.
 export async function optionalAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = readToken(req)
   if (!token) return next()
@@ -58,7 +58,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     const user = await loadUser(payload.sub)
     if (user && user.account_status === 'active') req.user = user
   } catch {
-    // Token tidak valid diperlakukan seperti pengunjung biasa.
+    // Diamkan saja: pengunjung biasa.
   }
 
   return next()

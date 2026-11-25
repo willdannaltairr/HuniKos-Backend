@@ -1,33 +1,9 @@
-import { z } from 'zod'
 import { withTransaction } from '../../config/db.js'
 import { conflict, notFound } from '../../utils/HttpError.js'
 import { assertRealImage } from '../../middlewares/upload.js'
 import { saveFile } from '../../utils/storage.js'
 import { expireStaleBookings } from '../../utils/bookingRules.js'
 import type { MaintenanceStatus } from '../../types/domain.js'
-
-export const createMaintenanceSchema = z.object({
-  booking_id: z
-    .string({ required_error: 'Booking wajib dipilih' })
-    .uuid('Format ID booking tidak valid'),
-  title: z
-    .string({ required_error: 'Judul wajib diisi' })
-    .trim()
-    .min(3, 'Judul minimal 3 karakter')
-    .max(120, 'Judul maksimal 120 karakter'),
-  description: z
-    .string({ required_error: 'Deskripsi wajib diisi' })
-    .trim()
-    .min(5, 'Deskripsi minimal 5 karakter')
-    .max(1000, 'Deskripsi maksimal 1000 karakter'),
-})
-
-export const maintenanceStatusSchema = z.object({
-  status: z.enum(['OPEN', 'IN_PROGRESS', 'DONE'], {
-    errorMap: () => ({ message: 'Status harus OPEN, IN_PROGRESS, atau DONE' }),
-  }),
-  owner_note: z.string().trim().max(300, 'Catatan maksimal 300 karakter').optional(),
-})
 
 const MAINTENANCE_SELECT = `
   SELECT m.id, m.booking_id, m.room_id, m.title, m.description, m.photo_url, m.status,
@@ -38,7 +14,6 @@ const MAINTENANCE_SELECT = `
   JOIN properties p ON p.id = r.property_id
   JOIN users u ON u.id = m.tenant_id`
 
-/** Bentuk Maintenance pada kontrak bagian 8. */
 export interface Maintenance {
   id: string
   booking_id: string
@@ -71,13 +46,14 @@ export async function listOwnerMaintenance(
 ): Promise<Maintenance[]> {
   return withTransaction(async (client) => {
     const values: unknown[] = [ownerId]
-    let filter = 'p.owner_id = $1'
+    let where = 'p.owner_id = $1'
     if (status) {
       values.push(status)
-      filter += ` AND m.status = $${values.length}`
+      where += ` AND m.status = $${values.length}`
     }
+
     const { rows } = await client.query<Maintenance>(
-      `${MAINTENANCE_SELECT} WHERE ${filter} ORDER BY m.created_at DESC`,
+      `${MAINTENANCE_SELECT} WHERE ${where} ORDER BY m.created_at DESC`,
       values,
     )
     return rows
@@ -90,12 +66,6 @@ export interface CreateMaintenanceInput {
   description: string
 }
 
-interface BookingForMaintenance {
-  id: string
-  room_id: string
-  status: string
-}
-
 export async function createMaintenance(
   tenantId: string,
   input: CreateMaintenanceInput,
@@ -106,9 +76,8 @@ export async function createMaintenance(
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
 
-    const { rows } = await client.query<BookingForMaintenance>(
-      `SELECT b.id, b.room_id, b.status FROM bookings b
-       WHERE b.id = $1 AND b.tenant_id = $2`,
+    const { rows } = await client.query<{ id: string; room_id: string; status: string }>(
+      `SELECT id, room_id, status FROM bookings WHERE id = $1 AND tenant_id = $2`,
       [input.booking_id, tenantId],
     )
     const booking = rows[0]
@@ -119,7 +88,7 @@ export async function createMaintenance(
       )
     }
 
-    const saved = detected && file ? await saveFile(file, 'maintenance', detected.ext) : null
+    const saved = file && detected ? await saveFile(file.buffer, 'maintenance', detected.ext) : null
 
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO maintenance_requests

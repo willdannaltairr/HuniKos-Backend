@@ -4,38 +4,29 @@ import { requireRole } from '../../middlewares/requireRole.js'
 import { uploadFields, uploadedFiles } from '../../middlewares/upload.js'
 import { validate } from '../../middlewares/validate.js'
 import { created, ok } from '../../utils/response.js'
-import { createMaintenanceSchema } from './maintenance.service.js'
+import { createMaintenanceSchema } from './maintenance.schema.js'
 import { createMaintenance, listTenantMaintenance } from './maintenance.service.js'
 
 const router = Router()
 
 router.use(authenticate, requireRole('tenant'))
 
-router.post('/', uploadFields([{ name: 'photo', maxCount: 1 }]), async (req, res) => {
-  // Field teks ikut multipart, jadi divalidasi manual lewat skema yang sama.
-  const parsed = createMaintenanceSchema.safeParse(req.body)
-  if (!parsed.success) {
-    return res.status(422).json({
-      success: false,
-      message: 'Data tidak valid',
-      errors: parsed.error.issues.map((issue) => ({
-        field: issue.path.join('.') || 'body',
-        message: issue.message,
-      })),
-    })
-  }
-
-  const maintenance = await createMaintenance(
-    req.user.id,
-    parsed.data,
-    uploadedFiles(req, 'photo')[0],
-  )
-  return created(res, maintenance, 'Laporan kerusakan berhasil dikirim')
-})
+router.post(
+  '/',
+  uploadFields([{ name: 'photo', maxCount: 1 }]),
+  validate(createMaintenanceSchema),
+  async (req, res) => {
+    const maintenance = await createMaintenance(
+      req.user.id,
+      req.body,
+      uploadedFiles(req, 'photo')[0],
+    )
+    created(res, maintenance, 'Laporan kerusakan berhasil dikirim')
+  },
+)
 
 router.get('/', async (req, res) => {
-  const maintenance = await listTenantMaintenance(req.user.id)
-  ok(res, maintenance, 'OK')
+  ok(res, await listTenantMaintenance(req.user.id), 'OK')
 })
 
 export default router

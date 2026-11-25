@@ -29,6 +29,5 @@ tenantPaymentRouter.post(
 export const tenantPaymentListRouter = Router()
 
 tenantPaymentListRouter.get('/', authenticate, requireRole('tenant'), async (req, res) => {
-  const payments = await listTenantPayments(req.user.id)
-  ok(res, payments, 'OK')
+  ok(res, await listTenantPayments(req.user.id), 'OK')
 })

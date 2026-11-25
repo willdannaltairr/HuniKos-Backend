@@ -1,13 +1,12 @@
 import bcrypt from 'bcryptjs'
 import { query } from '../../config/db.js'
-import { conflict, unauthorized, forbidden } from '../../utils/HttpError.js'
+import { conflict, forbidden, unauthorized } from '../../utils/HttpError.js'
 import type { Role, UserRow } from '../../types/domain.js'
 
-// Bentuk User sesuai kontrak bagian 8; password_hash tidak pernah ikut.
+// Kolom yang boleh dikirim ke client; password_hash tidak pernah ikut.
 export const USER_COLUMNS =
   'id, full_name, email, phone_number, avatar_url, role, account_status, created_at'
 
-/** Baris users termasuk hash, hanya dipakai di dalam modul ini. */
 interface UserWithPassword extends UserRow {
   password_hash: string
 }
@@ -31,8 +30,8 @@ export async function findUserByEmail(email: string): Promise<UserWithPassword |
 }
 
 export async function registerUser(input: RegisterInput): Promise<UserRow> {
-  const existing = await findUserByEmail(input.email)
-  if (existing) throw conflict('Email sudah digunakan')
+  const sudahAda = await findUserByEmail(input.email)
+  if (sudahAda) throw conflict('Email sudah digunakan')
 
   const passwordHash = await bcrypt.hash(input.password, 10)
 
@@ -45,7 +44,7 @@ export async function registerUser(input: RegisterInput): Promise<UserRow> {
     )
     return rows[0] as UserRow
   } catch (error) {
-    // Dua pendaftaran bersamaan dengan email sama tetap ditangkap di sini.
+    // Dua pendaftaran bersamaan dengan email sama tetap tertangkap di sini.
     if ((error as { code?: string }).code === '23505') throw conflict('Email sudah digunakan')
     throw error
   }
@@ -54,12 +53,12 @@ export async function registerUser(input: RegisterInput): Promise<UserRow> {
 export async function loginUser(input: LoginInput): Promise<UserRow> {
   const user = await findUserByEmail(input.email)
 
-  // Pesan sama untuk email salah dan password salah, supaya akun tidak bisa ditebak.
-  const passwordMatches = user ? await bcrypt.compare(input.password, user.password_hash) : false
-  if (!user || !passwordMatches) throw unauthorized('Email atau password salah')
+  // Pesan sama untuk email salah dan password salah agar akun tidak bisa ditebak.
+  const cocok = user ? await bcrypt.compare(input.password, user.password_hash) : false
+  if (!user || !cocok) throw unauthorized('Email atau password salah')
 
   if (user.account_status !== 'active') throw forbidden('Akun Anda sedang dinonaktifkan')
 
-  const { password_hash: _ignored, ...safeUser } = user
-  return safeUser
+  const { password_hash: _abaikan, ...aman } = user
+  return aman
 }

@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg'
-import { withTransaction, query } from '../../config/db.js'
+import { query, withTransaction } from '../../config/db.js'
 import { conflict, notFound } from '../../utils/HttpError.js'
 import { assertRealImage } from '../../middlewares/upload.js'
 import { saveFile } from '../../utils/storage.js'
@@ -8,7 +8,8 @@ import type { PaymentStatus } from '../../types/domain.js'
 
 const PAYMENT_SELECT = `
   SELECT pay.id, pay.booking_id, pay.amount, pay.proof_url, pay.status, pay.note,
-         pay.verified_at, pay.created_at,
+         pay.verified_at, pay.created_at, pay.midtrans_order_id,
+         pay.midtrans_transaction_status, pay.midtrans_payment_type,
          b.booking_code, r.room_number, p.name AS property_name, u.full_name AS tenant_name
   FROM payments pay
   JOIN bookings b ON b.id = pay.booking_id
@@ -16,7 +17,6 @@ const PAYMENT_SELECT = `
   JOIN properties p ON p.id = r.property_id
   JOIN users u ON u.id = b.tenant_id`
 
-/** Bentuk Payment pada kontrak bagian 8. */
 export interface Payment {
   id: string
   booking_id: string
@@ -30,6 +30,9 @@ export interface Payment {
   room_number: string
   property_name: string
   tenant_name: string
+  midtrans_order_id: string | null
+  midtrans_transaction_status: string | null
+  midtrans_payment_type: string | null
 }
 
 export async function listTenantPayments(tenantId: string): Promise<Payment[]> {
@@ -49,26 +52,20 @@ export async function listOwnerPayments(
 ): Promise<Payment[]> {
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
+
     const values: unknown[] = [ownerId]
-    let filter = 'p.owner_id = $1'
+    let where = 'p.owner_id = $1'
     if (status) {
       values.push(status)
-      filter += ` AND pay.status = $${values.length}`
+      where += ` AND pay.status = $${values.length}`
     }
+
     const { rows } = await client.query<Payment>(
-      `${PAYMENT_SELECT} WHERE ${filter} ORDER BY pay.created_at DESC`,
+      `${PAYMENT_SELECT} WHERE ${where} ORDER BY pay.created_at DESC`,
       values,
     )
     return rows
   })
-}
-
-interface BookingForPayment {
-  id: string
-  status: string
-  total_amount: number
-  expires_at: Date | null
-  room_id: string
 }
 
 export async function uploadPaymentProof(
@@ -77,13 +74,13 @@ export async function uploadPaymentProof(
   file: Express.Multer.File,
 ): Promise<Payment> {
   const detected = assertRealImage(file)
-  if (!detected) throw new Error('Berkas bukti pembayaran kosong')
 
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
 
-    const { rows } = await client.query<BookingForPayment>(
-      `SELECT * FROM bookings WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+    const { rows } = await client.query<{ status: string; total_amount: number }>(
+      `SELECT status, total_amount FROM bookings
+       WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
       [bookingId, tenantId],
     )
     const booking = rows[0]
@@ -100,7 +97,7 @@ export async function uploadPaymentProof(
       throw conflict('Masih ada bukti pembayaran yang menunggu verifikasi')
     }
 
-    const saved = await saveFile(file, 'proofs', detected.ext)
+    const saved = await saveFile(file.buffer, 'proofs', detected.ext)
 
     // Nominal selalu diambil dari booking, bukan dari client.
     const inserted = await client.query<{ id: string }>(
@@ -123,15 +120,6 @@ export interface VerifyPaymentInput {
   note?: string
 }
 
-interface PaymentForVerify {
-  id: string
-  status: PaymentStatus
-  booking_id: string
-  booking_status: string
-  room_id: string
-  expires_at: Date | null
-}
-
 export async function verifyPayment(
   ownerId: string,
   paymentId: string,
@@ -140,8 +128,17 @@ export async function verifyPayment(
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
 
-    const { rows } = await client.query<PaymentForVerify>(
-      `SELECT pay.*, b.status AS booking_status, b.room_id, b.expires_at, p.owner_id
+    const { rows } = await client.query<{
+      id: string
+      status: PaymentStatus
+      booking_id: string
+      booking_status: string
+      room_id: string
+      expires_at: Date | null
+      midtrans_order_id: string | null
+    }>(
+      `SELECT pay.id, pay.status, pay.booking_id, b.status AS booking_status,
+              b.room_id, b.expires_at, pay.midtrans_order_id
        FROM payments pay
        JOIN bookings b ON b.id = pay.booking_id
        JOIN rooms r ON r.id = b.room_id
@@ -155,43 +152,22 @@ export async function verifyPayment(
     if (payment.status !== 'PENDING') {
       throw conflict(`Pembayaran berstatus ${payment.status} sudah diproses`)
     }
+    // Pembayaran Midtrans hanya boleh berubah lewat webhook bersignature atau
+    // sinkronisasi status. Pemilik tidak boleh menyetujuinya secara manual.
+    if (payment.midtrans_order_id) {
+      throw conflict(
+        'Pembayaran Midtrans diverifikasi otomatis, tidak bisa diverifikasi manual',
+      )
+    }
 
     if (input.action === 'reject') {
       await client.query(
         `UPDATE payments SET status = 'REJECTED', verified_by = $2, verified_at = now(), note = $3
          WHERE id = $1`,
-        [paymentId, ownerId, input.note],
-      )
-    } else {
-      // Booking harus masih menunggu pembayaran dan belum kedaluwarsa.
-      if (payment.booking_status !== 'AWAITING_PAYMENT') {
-        throw conflict(`Booking berstatus ${payment.booking_status} tidak bisa dikonfirmasi`)
-      }
-      const stillValid = await client.query<{ valid: boolean }>(
-        `SELECT ($1::timestamptz IS NULL OR $1::timestamptz > now()) AS valid`,
-        [payment.expires_at],
-      )
-      if (!stillValid.rows[0]?.valid) throw conflict('Batas waktu pembayaran sudah lewat')
-
-      await client.query(
-        `UPDATE payments SET status = 'VERIFIED', verified_by = $2, verified_at = now(), note = $3
-         WHERE id = $1`,
         [paymentId, ownerId, input.note ?? null],
       )
-      await client.query(
-        `UPDATE bookings SET status = 'CONFIRMED', updated_at = now(), expires_at = NULL
-         WHERE id = $1`,
-        [payment.booking_id],
-      )
-      await client.query(
-        `INSERT INTO booking_status_histories (booking_id, from_status, to_status, changed_by, note)
-         VALUES ($1, 'AWAITING_PAYMENT', 'CONFIRMED', $2, $3)`,
-        [payment.booking_id, ownerId, 'Pembayaran diverifikasi'],
-      )
-      await client.query(
-        `UPDATE rooms SET status = 'OCCUPIED', updated_at = now() WHERE id = $1`,
-        [payment.room_id],
-      )
+    } else {
+      await approvePayment(client, ownerId, payment)
     }
 
     const { rows: updated } = await client.query<Payment>(
@@ -202,7 +178,42 @@ export async function verifyPayment(
   })
 }
 
-// Dipakai dashboard: pendapatan bulan berjalan menurut zona Asia/Jakarta.
+// Approve: payment VERIFIED, booking CONFIRMED, kamar OCCUPIED.
+async function approvePayment(
+  client: PoolClient,
+  ownerId: string,
+  payment: { id: string; booking_id: string; booking_status: string; room_id: string; expires_at: Date | null },
+): Promise<void> {
+  if (payment.booking_status !== 'AWAITING_PAYMENT') {
+    throw conflict(`Booking berstatus ${payment.booking_status} tidak bisa dikonfirmasi`)
+  }
+  // Batas waktu pembayaran sudah lewat? Tolak.
+  if (payment.expires_at !== null && payment.expires_at.getTime() <= Date.now()) {
+    throw conflict('Batas waktu pembayaran sudah lewat')
+  }
+
+  await client.query(
+    `UPDATE payments SET status = 'VERIFIED', verified_by = $2, verified_at = now()
+     WHERE id = $1`,
+    [payment.id, ownerId],
+  )
+  await client.query(
+    `UPDATE bookings SET status = 'CONFIRMED', expires_at = NULL, updated_at = now()
+     WHERE id = $1`,
+    [payment.booking_id],
+  )
+  await client.query(
+    `INSERT INTO booking_status_histories (booking_id, from_status, to_status, changed_by, note)
+     VALUES ($1, 'AWAITING_PAYMENT', 'CONFIRMED', $2, 'Pembayaran diverifikasi')`,
+    [payment.booking_id, ownerId],
+  )
+  await client.query('UPDATE rooms SET status = $2, updated_at = now() WHERE id = $1', [
+    payment.room_id,
+    'OCCUPIED',
+  ])
+}
+
+// Pendapatan bulan berjalan menurut zona Asia/Jakarta.
 export async function sumRevenueThisMonth(ownerId: string): Promise<number> {
   const { rows } = await query<{ total: number }>(
     `SELECT coalesce(sum(pay.amount), 0)::numeric AS total

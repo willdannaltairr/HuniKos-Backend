@@ -1,11 +1,17 @@
 # Hasil Pengujian API HUNIKOS
 
 Dokumen ini mencatat hasil pengujian yang **benar-benar dijalankan**, bukan perkiraan.
-Semua angka di bawah berasal dari eksekusi terhadap server yang hidup dan PostgreSQL
-lokal yang berisi data seed. Perangkat yang dipakai: Node.js 22.17.1, PostgreSQL 18,
-Windows 11, server dijalankan dengan `node src/server.js` (`PORT=3100`).
 
-Tanggal pengujian: 19 November 2026.
+Pengujian terbaru (25 November 2026) dijalankan terhadap server yang hidup, database
+**PostgreSQL Aiven** (`defaultdb`, service `HuniKos`) yang diisi lewat `npm run migrate:up`
+dan `npm run seed`, serta **Cloudinary sungguhan** (cloud `f1l5gbpf`). Server dijalankan
+dengan `PORT=3000 LOGIN_RATE_LIMIT=200 npm start` di Windows 11. Hasilnya:
+**78/78 lulus, 0 gagal**, mencakup seluruh endpoint dan kasus negatif. Migration dan seed
+juga dijalankan ulang dari database kosong dan berhasil.
+
+Rangkaian di bawah berasal dari pengujian sebelumnya (19 November 2026) terhadap
+PostgreSQL lokal dengan `node src/server.js` (`PORT=3100`, Node.js 22.17.1, PostgreSQL 18).
+Angkanya tetap dicatat sebagai riwayat pengujian.
 
 ## Ringkasan
 
@@ -23,14 +29,17 @@ Tanggal pengujian: 19 November 2026.
 ## Cara menjalankan ulang
 
 ```bash
-npm run dev
+npm install
+npm run migrate:up
+npm run seed
+npm start
 ```
 
 Batas percobaan login bawaan adalah 10 per IP per 15 menit. Saat menjalankan skrip uji
 otomatis, banyak login terjadi dari satu alamat, jadi batas itu perlu dinaikkan:
 
 ```bash
-PORT=3100 LOGIN_RATE_LIMIT=200 node src/server.js
+PORT=3100 LOGIN_RATE_LIMIT=200 npm start
 ```
 
 Batas 10 tetap berlaku di produksi; `LOGIN_RATE_LIMIT` hanya jalan keluar untuk pengujian.
@@ -113,9 +122,6 @@ Tiga masalah ini muncul dari pengujian, bukan dari membaca kode saja.
 
 ## Yang belum diuji
 
-- **Driver Cloudinary.** Semua uji memakai `STORAGE_DRIVER=local`. Jalur Cloudinary sudah
-  ditulis tetapi belum pernah dijalankan terhadap akun Cloudinary sungguhan.
-- **Deploy ke Railway dan database Aiven.** Pengujian memakai PostgreSQL lokal. Koneksi SSL
-  dengan `DB_CA_CERT` belum dicoba ke Aiven.
 - **Pengujian beban.** Tidak ada uji jumlah permintaan bersamaan di luar dua booking
   paralel di atas.
+- **Deploy produksi.** Pengujian dijalankan lokal; deploy ke Railway belum dicoba.

@@ -14,12 +14,12 @@ website Next.js dan aplikasi mobile Flutter.
 | Bagian | Pilihan |
 |---|---|
 | Runtime | Node.js 20+ (LTS) |
-| Framework | Express 5, JavaScript ESM (`"type": "module"`) |
-| Database | PostgreSQL 16 (Aiven free plan), `pg` tanpa ORM |
+| Framework | Express 5, TypeScript ESM (`"type": "module"`) |
+| Database | PostgreSQL di Aiven, `pg` tanpa ORM |
 | Migrasi | `node-pg-migrate` (file `.sql`) |
 | Validasi | `zod@3` |
 | Auth | JWT HS256 + `bcryptjs` |
-| Upload | `multer` → driver `local` (dev) atau `cloudinary` (produksi) |
+| Upload | `multer` → **Cloudinary** (tidak ada file yang disimpan di disk server) |
 | Hosting | Railway |
 
 ## Struktur repo
@@ -27,6 +27,8 @@ website Next.js dan aplikasi mobile Flutter.
 ```text
 .
 ├─ AGENTS.md                    # aturan kerja yang dibaca otomatis tiap sesi
+├─ .env.example                 # daftar semua variabel environment
+├─ certs/                       # ca.pem Aiven (di-gitignore)
 ├─ docs/
 │  ├─ 00_KONTRAK_BERSAMA.md      # kontrak API + database
 │  ├─ DEPLOY_AIVEN.md            # panduan database ke Aiven
@@ -36,17 +38,17 @@ website Next.js dan aplikasi mobile Flutter.
 │  ├─ schema.sql                 # 10 tabel + index, siap dijalankan di psql/pgAdmin
 │  └─ seed.sql                   # akun uji + data contoh, siap dijalankan di psql/pgAdmin
 ├─ api.http                      # koleksi REST Client: semua endpoint
-├─ contoh-upload/                # berkas contoh untuk uji unggah
 ├─ migrations/                   # migration node-pg-migrate
-├─ scripts/seed.ts               # data contoh, aman dijalankan berulang
-├─ uploads/                      # hanya untuk driver local (masuk .gitignore)
+├─ scripts/
+│  ├─ migrate.ts                 # jalankan migration (membaca SSL dari .env)
+│  └─ seed.ts                    # data contoh, aman dijalankan berulang
 ├─ src/
 │  ├─ app.ts                     # susun middleware & route
 │  ├─ server.ts                  # listen + cek koneksi database
-│  ├─ config/                    # env.ts, db.ts (pool, type parser)
+│  ├─ config/                    # env.ts (baca env), db.ts (pool, type parser)
 │  ├─ middlewares/               # auth, requireRole, validate, upload, errorHandler
 │  ├─ types/                     # tipe domain bersama + augmentasi Express
-│  ├─ utils/                     # response, HttpError, storage, bookingRules
+│  ├─ utils/                     # response, HttpError, storage (Cloudinary), bookingRules
 │  └─ modules/                   # auth, users, facilities, properties, rooms,
 │                                # bookings, payments, maintenance, owner, admin
 └─ .github/
@@ -61,40 +63,34 @@ Seluruh kode sumber ditulis **TypeScript** dan dijalankan langsung dengan `tsx`
 
 ## Menjalankan di lokal
 
-Prasyarat: Node.js 20+, PostgreSQL 18 terpasang di `C:\Program Files\PostgreSQL\18\bin`
-(boleh diubah lewat `PG_BIN`).
+Prasyarat: Node.js 20+, satu database PostgreSQL (Aiven, atau PostgreSQL lokal milikmu),
+dan akun Cloudinary untuk penyimpanan gambar.
 
-Repo ini membawa cluster database sendiri di `.pgdata/` (port **5434**), terpisah dari
-instalasi PostgreSQL bawaan mesin di 5432. Menyalakannya:
-
-```bash
-npm run db:local -- start
-```
-
-Perintah itu membuat cluster bila belum ada, menyalakannya, lalu membuat database
-`hunikos_test` bila belum ada. Perintah lain:
-
-| Perintah | Kegunaan |
-|---|---|
-| `npm run db:local -- init` | buat cluster + database dari nol |
-| `npm run db:local -- start` | nyalakan cluster |
-| `npm run db:local -- stop` | hentikan cluster |
-| `npm run db:local -- status` | cek apakah cluster berjalan |
-
-Setelah cluster hidup, siapkan `.env`:
+1. Siapkan `.env` dari contoh:
 
 ```bash
 cp .env.example .env
 ```
 
-Isi `.env` minimal `DATABASE_URL` dan `JWT_SECRET` (32 karakter acak). Untuk cluster lokal,
-`DATABASE_URL` cukup:
+2. Isi nilai berikut (lihat penjelasan tiap baris di `.env.example`):
 
 ```bash
-DATABASE_URL=postgres://postgres@127.0.0.1:5434/hunikos_test
+DATABASE_URL=postgres://avnadmin:PASSWORD@HOST:PORT/defaultdb
+DB_CA_CERT_PATH=certs/aiven-ca.pem
+JWT_SECRET=<string acak minimal 32 karakter>
+CLOUDINARY_CLOUD_NAME=<cloud name>
+CLOUDINARY_API_KEY=<api key>
+CLOUDINARY_API_SECRET=<api secret>
 ```
 
-Lalu:
+`DB_CA_CERT_PATH` dipakai bila sertifikat Aiven ada sebagai berkas di `certs/`.
+Kalau server tidak punya berkasnya (mis. Railway), isi `DB_CA_CERT` dengan seluruh
+isi `ca.pem`.
+
+Untuk PostgreSQL lokal tanpa SSL, kosongkan kedua variabel CA dan cukup isi
+`DATABASE_URL=postgres://postgres@127.0.0.1:5432/hunikos_test`.
+
+3. Pasang dependensi, isi database, lalu jalankan:
 
 ```bash
 npm install
@@ -125,7 +121,6 @@ Perintah lain yang tersedia:
 | `npm run typecheck` | periksa tipe tanpa menulis berkas |
 | `npm run migrate:up` | jalankan semua migration |
 | `npm run migrate:down` | batalkan migration terakhir |
-| `npm run db:local` | kelola cluster PostgreSQL lokal (`start`/`stop`/`status`) |
 | `npm run seed` | isi akun uji dan data contoh (idempotent) |
 
 ## Akun uji
@@ -156,6 +151,13 @@ Rincian body, query, dan bentuk response ada di kontrak bagian 8 dan 9. Contoh r
 setiap endpoint ada di `api.http` (buka di VS Code dengan ekstensi **REST Client**, lalu
 jalankan dari atas ke bawah).
 
+## Gambar dan upload
+
+Semua gambar (foto properti, bukti transfer, foto laporan, avatar) diunggah ke Cloudinary
+dan yang disimpan di database hanya URL dan `public_id`. Tidak ada folder `uploads/`.
+Multer tetap memeriksa ukuran (maksimal 2 MB) dan isi berkas lewat magic bytes, supaya file
+yang bukan jpg/png/webp ditolak sebelum dikirim ke Cloudinary.
+
 ## Menguji
 
 Ringkasan hasil terakhir: **198/198 lulus, 0 gagal**, mencakup 39 kasus negatif. Rincian per
@@ -177,7 +179,7 @@ Panduan lengkap ada di [`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md), dan d
   dari `package.json` (`npm install` / `npm start`).
 - Health check path `/api/health`, domain publik dibuat lewat Settings → Networking.
 - `NODE_ENV=production`, `DATABASE_URL` dari Aiven, `DB_CA_CERT` berisi isi `ca.pem`.
-- Produksi wajib `STORAGE_DRIVER=cloudinary`, karena sistem berkas container sementara.
+- Tiga kunci Cloudinary wajib diisi, karena gambar tidak disimpan di disk server.
 - `PORT` tidak perlu diisi; Railway menyuntikkannya sendiri.
 
 ## Alur kerja branch

@@ -2,12 +2,10 @@ import { randomBytes } from 'node:crypto'
 import type { PoolClient } from 'pg'
 import { withTransaction } from '../../config/db.js'
 import { conflict, notFound, unprocessable } from '../../utils/HttpError.js'
-import {
-  expireStaleBookings, syncRoomStatus, calculateEndDate,
-} from '../../utils/bookingRules.js'
+import { expireStaleBookings, syncRoomStatus, calculateEndDate } from '../../utils/bookingRules.js'
 import type { BookingStatus, Role } from '../../types/domain.js'
 
-// Satu bentuk Booking dipakai bersama oleh modul penyewa, pemilik, dan admin.
+// Satu bentuk Booking dipakai oleh modul penyewa, pemilik, dan admin.
 export const BOOKING_SELECT = `
   SELECT b.id, b.booking_code, b.status, b.start_date, b.end_date, b.duration_months,
          b.rental_price_snapshot, b.total_amount, b.note, b.owner_note, b.expires_at,
@@ -23,7 +21,6 @@ export const BOOKING_SELECT = `
   JOIN properties p ON p.id = r.property_id
   JOIN users u ON u.id = b.tenant_id`
 
-/** Baris mentah hasil BOOKING_SELECT, termasuk kolom internal yang dibuang saat dikirim. */
 export interface BookingRow {
   id: string
   booking_code: string
@@ -46,11 +43,11 @@ export interface BookingRow {
   owner_id: string
 }
 
-/** Bentuk Booking pada kontrak bagian 8 (tanpa kolom internal). */
+/** Bentuk Booking pada kontrak (tanpa kolom internal). */
 export type Booking = Omit<BookingRow, 'owner_id' | 'tenant_id' | 'room_id'>
 
-function toBooking(row: BookingRow): Booking {
-  const { owner_id: _ignored, tenant_id: _tid, room_id: _rid, ...booking } = row
+export function toBooking(row: BookingRow): Booking {
+  const { owner_id: _a, tenant_id: _b, room_id: _c, ...booking } = row
   return booking
 }
 
@@ -64,33 +61,31 @@ export async function listBookings(filter: BookingListFilter): Promise<Booking[]
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
 
-    const filters: string[] = []
+    const conditions: string[] = []
     const values: unknown[] = []
     if (filter.tenantId) {
       values.push(filter.tenantId)
-      filters.push(`b.tenant_id = $${values.length}`)
+      conditions.push(`b.tenant_id = $${values.length}`)
     }
     if (filter.ownerId) {
       values.push(filter.ownerId)
-      filters.push(`p.owner_id = $${values.length}`)
+      conditions.push(`p.owner_id = $${values.length}`)
     }
     if (filter.status) {
       values.push(filter.status)
-      filters.push(`b.status = $${values.length}`)
+      conditions.push(`b.status = $${values.length}`)
     }
 
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const { rows } = await client.query<BookingRow>(
-      `${BOOKING_SELECT} WHERE ${filters.join(' AND ')} ORDER BY b.created_at DESC`,
+      `${BOOKING_SELECT} ${where} ORDER BY b.created_at DESC`,
       values,
     )
     return rows.map(toBooking)
   })
 }
 
-async function findBookingForViewer(
-  client: PoolClient,
-  bookingId: string,
-): Promise<BookingRow | null> {
+async function loadBooking(client: PoolClient, bookingId: string): Promise<BookingRow | null> {
   const { rows } = await client.query<BookingRow>(`${BOOKING_SELECT} WHERE b.id = $1`, [bookingId])
   return rows[0] ?? null
 }
@@ -100,23 +95,8 @@ export interface BookingViewer {
   role: Role
 }
 
-export interface PaymentInBooking {
-  id: string
-  booking_id: string
-  amount: number
-  proof_url: string
-  status: string
-  note: string | null
-  verified_at: Date | null
-  created_at: Date
-  booking_code: string
-  room_number: string
-  property_name: string
-  tenant_name: string
-}
-
 export interface BookingDetail extends Booking {
-  payments: PaymentInBooking[]
+  payments: unknown[]
   history: { from_status: string | null; to_status: string; note: string | null; created_at: Date }[]
 }
 
@@ -127,16 +107,14 @@ export async function getBookingDetail(
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
 
-    const booking = await findBookingForViewer(client, bookingId)
+    const booking = await loadBooking(client, bookingId)
     if (!booking) throw notFound('Booking tidak ditemukan')
 
-    const allowed =
+    const boleh =
       viewer.role === 'admin' || viewer.id === booking.tenant_id || viewer.id === booking.owner_id
-    if (!allowed) throw notFound('Booking tidak ditemukan')
+    if (!boleh) throw notFound('Booking tidak ditemukan')
 
-    // Bentuk Payment pada kontrak bagian 8 wajib memuat kode booking dan nama
-    // kamar/properti/penyewa, termasuk saat dibaca di dalam detail booking.
-    const payments = await client.query<PaymentInBooking>(
+    const payments = await client.query(
       `SELECT pay.id, pay.booking_id, pay.amount, pay.proof_url, pay.status, pay.note,
               pay.verified_at, pay.created_at,
               b.booking_code, r.room_number, p.name AS property_name, u.full_name AS tenant_name
@@ -150,12 +128,7 @@ export async function getBookingDetail(
       [bookingId],
     )
 
-    const history = await client.query<{
-      from_status: string | null
-      to_status: string
-      note: string | null
-      created_at: Date
-    }>(
+    const history = await client.query(
       `SELECT from_status, to_status, note, created_at
        FROM booking_status_histories WHERE booking_id = $1 ORDER BY created_at ASC`,
       [bookingId],
@@ -165,7 +138,7 @@ export async function getBookingDetail(
   })
 }
 
-// Kode booking diulang bila kebetulan bentrok dengan kode yang sudah ada.
+// Kode booking: 'BK-' + 8 hex huruf besar.
 function makeBookingCode(): string {
   return `BK-${randomBytes(4).toString('hex').toUpperCase()}`
 }
@@ -177,22 +150,19 @@ export interface CreateBookingInput {
   note?: string
 }
 
-interface RoomForBooking {
-  id: string
-  status: string
-  monthly_price: number
-  owner_id: string
-  verification_status: string
-  account_status: string
-}
-
 export async function createBooking(tenantId: string, input: CreateBookingInput): Promise<Booking> {
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
 
     // Kunci baris kamar agar dua penyewa tidak lolos bersamaan.
-    const roomResult = await client.query<RoomForBooking>(
-      `SELECT r.id, r.status, r.monthly_price, p.owner_id, p.verification_status, u.account_status
+    const roomResult = await client.query<{
+      id: string
+      status: string
+      monthly_price: number
+      verification_status: string
+      account_status: string
+    }>(
+      `SELECT r.id, r.status, r.monthly_price, p.verification_status, u.account_status
        FROM rooms r
        JOIN properties p ON p.id = r.property_id
        JOIN users u ON u.id = p.owner_id
@@ -200,19 +170,19 @@ export async function createBooking(tenantId: string, input: CreateBookingInput)
        FOR UPDATE OF r`,
       [input.room_id],
     )
-    const room = roomResult.rows[0]
-    if (!room) throw notFound('Kamar tidak ditemukan')
-    if (room.verification_status !== 'approved' || room.account_status !== 'active') {
+    const kamar = roomResult.rows[0]
+    if (!kamar) throw notFound('Kamar tidak ditemukan')
+    if (kamar.verification_status !== 'approved' || kamar.account_status !== 'active') {
       throw notFound('Kamar tidak ditemukan')
     }
-    if (['MAINTENANCE', 'INACTIVE'].includes(room.status)) {
-      throw conflict(`Kamar sedang ${room.status.toLowerCase()} dan belum bisa dipesan`)
+    if (kamar.status === 'MAINTENANCE' || kamar.status === 'INACTIVE') {
+      throw conflict(`Kamar sedang ${kamar.status.toLowerCase()} dan belum bisa dipesan`)
     }
 
-    const today = await client.query<{ today: string }>(
+    const hariIni = await client.query<{ today: string }>(
       `SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date::text AS today`,
     )
-    if (input.start_date < (today.rows[0]?.today as string)) {
+    if (input.start_date < (hariIni.rows[0]?.today as string)) {
       throw unprocessable('Data tidak valid', [
         { field: 'start_date', message: 'Tanggal mulai tidak boleh sebelum hari ini (WIB)' },
       ])
@@ -220,20 +190,20 @@ export async function createBooking(tenantId: string, input: CreateBookingInput)
 
     const endDate = await calculateEndDate(client, input.start_date, input.duration_months)
 
-    const overlap = await client.query(
+    const bentrok = await client.query(
       `SELECT 1 FROM bookings
        WHERE room_id = $1
          AND status IN ('PENDING','AWAITING_PAYMENT','CONFIRMED')
          AND start_date < $3::date AND end_date > $2::date
        LIMIT 1`,
-      [room.id, input.start_date, endDate],
+      [kamar.id, input.start_date, endDate],
     )
-    if ((overlap.rowCount ?? 0) > 0) throw conflict('Kamar sudah dipesan pada periode tersebut')
+    if ((bentrok.rowCount ?? 0) > 0) throw conflict('Kamar sudah dipesan pada periode tersebut')
 
-    const totalAmount = Number(room.monthly_price) * input.duration_months
+    const totalAmount = Number(kamar.monthly_price) * input.duration_months
 
-    let booking: { id: string } | null = null
-    for (let attempt = 0; attempt < 3 && !booking; attempt += 1) {
+    let bookingId: string | null = null
+    for (let attempt = 0; attempt < 3 && !bookingId; attempt += 1) {
       try {
         const inserted = await client.query<{ id: string }>(
           `INSERT INTO bookings
@@ -242,24 +212,25 @@ export async function createBooking(tenantId: string, input: CreateBookingInput)
            VALUES ($1, $2, $3, $4::date, $5::int, $6::date, $7::numeric, $8::numeric, 'PENDING', $9)
            RETURNING id`,
           [
-            makeBookingCode(), tenantId, room.id, input.start_date, input.duration_months,
-            endDate, room.monthly_price, totalAmount, input.note ?? null,
+            makeBookingCode(), tenantId, kamar.id, input.start_date, input.duration_months,
+            endDate, kamar.monthly_price, totalAmount, input.note ?? null,
           ],
         )
-        booking = inserted.rows[0] ?? null
+        bookingId = inserted.rows[0]?.id ?? null
       } catch (error) {
+        // Kode booking kebetulan kembar: ulangi dengan kode baru.
         if ((error as { code?: string }).code !== '23505') throw error
       }
     }
-    if (!booking) throw conflict('Gagal membuat kode booking, coba lagi')
+    if (!bookingId) throw conflict('Gagal membuat kode booking, coba lagi')
 
     await client.query(
       `INSERT INTO booking_status_histories (booking_id, from_status, to_status, changed_by, note)
        VALUES ($1, NULL, 'PENDING', $2, 'Booking dibuat penyewa')`,
-      [booking.id, tenantId],
+      [bookingId, tenantId],
     )
 
-    const detail = await findBookingForViewer(client, booking.id)
+    const detail = await loadBooking(client, bookingId)
     return toBooking(detail as BookingRow)
   })
 }
@@ -268,13 +239,14 @@ export async function cancelBooking(bookingId: string, tenantId: string): Promis
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
 
-    const { rows } = await client.query<{ id: string; status: BookingStatus; room_id: string }>(
-      `SELECT id, status, room_id FROM bookings WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+    const { rows } = await client.query<{ status: BookingStatus; room_id: string }>(
+      `SELECT status, room_id FROM bookings
+       WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
       [bookingId, tenantId],
     )
     const booking = rows[0]
     if (!booking) throw notFound('Booking tidak ditemukan')
-    if (!['PENDING', 'AWAITING_PAYMENT'].includes(booking.status)) {
+    if (booking.status !== 'PENDING' && booking.status !== 'AWAITING_PAYMENT') {
       throw conflict(`Booking berstatus ${booking.status} tidak bisa dibatalkan`)
     }
 
@@ -289,30 +261,7 @@ export async function cancelBooking(bookingId: string, tenantId: string): Promis
     )
     await syncRoomStatus(client, booking.room_id)
 
-    const detail = await findBookingForViewer(client, bookingId)
+    const detail = await loadBooking(client, bookingId)
     return toBooking(detail as BookingRow)
   })
-}
-
-/** Baris bookings mentah; dipakai modul pembayaran dan laporan kerusakan. */
-export interface TenantBookingRow {
-  id: string
-  status: BookingStatus
-  room_id: string
-  total_amount: number
-  expires_at: Date | null
-}
-
-// Dipakai modul pembayaran dan laporan kerusakan.
-export async function assertTenantBooking(
-  client: PoolClient,
-  bookingId: string,
-  tenantId: string,
-): Promise<TenantBookingRow> {
-  const { rows } = await client.query<TenantBookingRow>(
-    `SELECT * FROM bookings WHERE id = $1 AND tenant_id = $2`,
-    [bookingId, tenantId],
-  )
-  if (!rows[0]) throw notFound('Booking tidak ditemukan')
-  return rows[0]
 }
