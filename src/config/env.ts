@@ -51,6 +51,13 @@ export const env = {
     .filter(Boolean),
   // Batas percobaan login per IP per 15 menit.
   loginRateLimit: Number(process.env.LOGIN_RATE_LIMIT ?? 10),
+  midtrans: {
+    isProduction: (process.env.MIDTRANS_IS_PRODUCTION ?? 'false') === 'true',
+    serverKey: process.env.MIDTRANS_SERVER_KEY ?? '',
+    signatureKey: process.env.MIDTRANS_SIGNATURE_KEY ?? '',
+    clientKey: process.env.MIDTRANS_CLIENT_KEY ?? '',
+    notificationUrl: process.env.MIDTRANS_NOTIFICATION_URL || null,
+  },
   cloudinary: {
     cloudName: wajib('CLOUDINARY_CLOUD_NAME'),
     apiKey: wajib('CLOUDINARY_API_KEY'),
