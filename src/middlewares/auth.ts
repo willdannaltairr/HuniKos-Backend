@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken'
 import type { NextFunction, Request, Response } from 'express'
 import { env } from '../config/env.js'
 import { query } from '../config/db.js'
-import { unauthorized } from '../utils/HttpError.js'
+import { forbidden, unauthorized } from '../utils/HttpError.js'
 import type { UserRow } from '../types/domain.js'
 
 // Ambil token dari header "Authorization: Bearer <token>".
@@ -41,7 +41,9 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
   const user = await loadUser(payload.sub)
   if (!user) return next(unauthorized())
-  if (user.account_status !== 'active') return next(unauthorized('Akun Anda sedang dinonaktifkan'))
+  // Kontrak bagian 6: akun suspended dijawab 403, bukan 401. Bedanya penting di
+  // klien — 401 memicu "sesi berakhir", 403 mempertahankan pesan aslinya.
+  if (user.account_status !== 'active') return next(forbidden('Akun Anda sedang dinonaktifkan'))
 
   req.user = user
   return next()
