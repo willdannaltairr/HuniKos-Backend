@@ -40,6 +40,32 @@ Untuk sandbox, `MIDTRANS_SERVER_KEY` dan `MIDTRANS_SIGNATURE_KEY` sama-sama
 memakai kunci `SB-Mid-server-...`. Kunci `Mid-server-...` hanya berlaku di
 produksi; memakainya pada transaksi sandbox membuat verifikasi notifikasi gagal.
 
+Kunci client juga mengikuti lingkungannya: sandbox memakai `SB-Mid-client-...`.
+SDK Android memilih lingkungan dari prefiks kunci itu, jadi kunci produksi tidak
+bisa membuka token sandbox — `lib/core/midtrans_payment.dart` menolak kombinasi
+itu lebih awal dengan pesan yang menyebut sebabnya.
+
+### Di Vercel (backend production)
+
+Isi lewat **Project → Settings → Environment Variables**, atau dari terminal:
+
+```bash
+npx vercel env add MIDTRANS_IS_PRODUCTION production --value "false"
+npx vercel env add MIDTRANS_SERVER_KEY production
+npx vercel env add MIDTRANS_SIGNATURE_KEY production
+npx vercel env add MIDTRANS_NOTIFICATION_URL production \
+  --value "https://hunikosbackend.vercel.app/api/midtrans/notification"
+```
+
+`MIDTRANS_CLIENT_KEY` tidak perlu di Vercel: backend tidak pernah memakainya,
+hanya aplikasi Flutter yang membutuhkan. `MIDTRANS_NOTIFICATION_URL` dikirim
+sebagai header `X-Override-Notification` setiap kali transaksi dibuat, sehingga
+URL notifikasi tidak bergantung pada pengaturan di dashboard Midtrans.
+
+Kalau `MIDTRANS_SERVER_KEY` kosong, `POST /api/bookings/:id/payments/midtrans`
+menjawab **500** dengan pesan generik di klien; log function mencatat
+`MIDTRANS_SERVER_KEY belum diisi`. Endpoint lain tetap normal.
+
 ## Menjalankan migrasi
 
 Kolom Midtrans ditambahkan oleh `database/migrations/12_midtrans_payments.sql`.
