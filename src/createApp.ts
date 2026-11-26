@@ -34,8 +34,11 @@ export function createApp() {
       origin(origin, callback) {
         // Tanpa origin (cURL, aplikasi mobile) permintaan tetap dilayani.
         if (!origin || env.corsOrigins.includes(origin)) return callback(null, true)
-        // flutter run -d chrome memakai port acak tiap kali dijalankan.
-        if (!env.isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        // flutter run -d chrome memilih port acak tiap dijalankan, jadi origin
+        // loopback diterima berapa pun portnya — juga saat backend di Vercel.
+        // Ini aman: hanya halaman di komputer pengembang yang bisa memakainya,
+        // sedangkan domain lain tetap harus terdaftar di CORS_ORIGINS.
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
           return callback(null, true)
         }
         return callback(null, false)
