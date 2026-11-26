@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { RequestHandler } from 'express'
 import { env } from '../config/env.js'
+import { HttpError } from './HttpError.js'
 
 // Jembatan ke REST API Midtrans. Sengaja memakai fetch bawaan Node 20 supaya
 // tidak menambah dependency yang perlu dijelaskan ke penguji.
@@ -72,7 +73,13 @@ export async function createSnapTransaction(
 
   if (!response.ok) {
     const detail = await response.text()
-    throw new Error(`Midtrans menolak transaksi (${response.status}): ${detail.slice(0, 300)}`)
+    // Pesan Midtrans hanya masuk log: isinya teknis dan bisa membingungkan
+    // penyewa. Yang dikirim ke klien adalah sebab yang bisa ditindaklanjuti.
+    console.error(`Midtrans menolak transaksi (${response.status}): ${detail.slice(0, 300)}`)
+    throw new HttpError(
+      503,
+      'Midtrans menolak membuat transaksi. Periksa kunci Midtrans di server, atau gunakan unggah bukti transfer.',
+    )
   }
   const payload = (await response.json()) as SnapResult
   return payload
@@ -89,7 +96,11 @@ export async function getTransactionStatus(orderId: string): Promise<MidtransSta
   if (response.status === 404) return null
   if (!response.ok) {
     const detail = await response.text()
-    throw new Error(`Gagal cek status Midtrans (${response.status}): ${detail.slice(0, 300)}`)
+    console.error(`Gagal cek status Midtrans (${response.status}): ${detail.slice(0, 300)}`)
+    throw new HttpError(
+      503,
+      'Status pembayaran belum bisa diperiksa ke Midtrans. Coba lagi sebentar lagi.',
+    )
   }
   return (await response.json()) as MidtransStatus
 }
