@@ -180,8 +180,9 @@ Panduan lengkap ada di [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md), dan dat
 
 - Vercel **import repo GitHub**; Framework Preset *Other*, Root Directory dan Build Command
   dikosongkan.
-- `index.ts` di root mengekspor aplikasi Express; Vercel mendeteksinya otomatis. `src/server.ts`
-  hanya dipakai di lokal.
+- `index.ts` di root mengekspor aplikasi Express; Vercel mendeteksinya otomatis. `src/localServer.ts`
+  hanya dipakai di lokal.`src/app.ts` dan `src/server.ts` sengaja diganti nama supaya Vercel
+  tidak mengira keduanya sebagai entry Express kedua.
 - **Production Branch** di Vercel harus branch yang berisi kode ini (`develop`), bukan `main`
   yang isinya hanya dokumen. Ini penyebab paling sering muncul 404.
 - Health check path `/api/health`.

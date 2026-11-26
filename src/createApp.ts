@@ -1,5 +1,7 @@
 import express from 'express'
+import type { RequestHandler } from 'express'
 import helmet from 'helmet'
+import type { HelmetOptions } from 'helmet'
 import cors from 'cors'
 import morgan from 'morgan'
 import { env } from './config/env.js'
@@ -22,7 +24,10 @@ export function createApp() {
   const app = express()
 
   // Gambar dimuat oleh website dan aplikasi mobile dari domain lain.
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
+  // Cast dipakai karena build Vercel me-resolve 'helmet' sebagai namespace, bukan fungsi
+  // default; tanpa cast tsc gagal dengan TS2349 walau di lokal lolos.
+  const pasangHelmet = helmet as unknown as (options?: HelmetOptions) => RequestHandler
+  app.use(pasangHelmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 
   app.use(
     cors({

@@ -8,8 +8,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/localServer.ts",
+    "start": "tsx src/localServer.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "migrate:up": "tsx database/scripts/migrate.ts up",

@@ -8,10 +8,12 @@ mendeteksinya otomatis — tidak perlu konfigurasi rute.
 
 | Berkas | Isi |
 |---|---|
-| `index.ts` | mengekspor `createApp()` sebagai default |
-| `vercel.json` | `maxDuration` 60 detik dan region `sin1` (opsional, hanya penyetelan) |
+| `index.ts` | satu-satunya entry Express: mengekspor `createApp()` sebagai default |
+| `vercel.json` | `"framework": "express"` dan region `sin1` |
 
-`src/server.ts` tetap dipakai untuk lokal (`npm run dev`) dan tidak dijalankan di Vercel.
+`src/createApp.ts` menyusun aplikasi, sedangkan `src/localServer.ts` dipakai untuk lokal
+(`npm run dev`). Keduanya sengaja tidak bernama `app.ts`/`server.ts`: Vercel mendeteksi
+nama itu sebagai entry Express otomatis dan menolaknya bukan default export.
 
 **Jangan menaruh aplikasi di `api/index.ts`.** Semua path di sana akan diberi prefiks
 `/api`, sehingga `/api/health` menjadi `/api/api/health` dan seluruh endpoint rusak.
@@ -70,8 +72,8 @@ Setelah branch benar, Vercel mendeteksi `index.ts` di root dan membuat satu func
 ### 4b. Import repo
 
 1. <https://vercel.com/new> → **Import Git Repository** → pilih repo `HuniKos-Backend`.
-2. Framework Preset: **Other**. Root Directory: biarkan kosong.
-3. Build Command: biarkan kosong. Output Directory: biarkan kosong.
+2. Framework Preset: **Express**. Root Directory: biarkan kosong.
+3. Build Command dan Output Directory: biarkan kosong; Vercel mengambil dari `vercel.json`.
 4. Tambahkan environment variable dari langkah 3, lalu **Deploy**.
 
 Lewat terminal (opsional):
