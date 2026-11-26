@@ -47,6 +47,7 @@ CREATE TABLE properties (
   rules               TEXT,
   verification_status VARCHAR(10) NOT NULL DEFAULT 'pending' CHECK (verification_status IN ('pending','approved','rejected')),
   rejection_note      TEXT,
+  is_owner_promo      BOOLEAN NOT NULL DEFAULT false, -- admin menyalakan promo bebas biaya owner
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -119,6 +120,7 @@ CREATE TABLE bookings (
   note                  TEXT,
   owner_note            TEXT,
   expires_at            TIMESTAMPTZ,                      -- diisi saat status AWAITING_PAYMENT (sekarang + 24 jam)
+  fee_applicable        BOOLEAN NOT NULL DEFAULT false,   -- booking lama tetap tanpa biaya platform
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (end_date > start_date)
@@ -143,7 +145,13 @@ CREATE TABLE booking_status_histories (
 CREATE TABLE payments (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id  UUID NOT NULL REFERENCES bookings(id) ON DELETE RESTRICT,
-  amount      NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+  amount      NUMERIC(14,2) NOT NULL CHECK (amount > 0),  -- harga sewa murni, sebelum biaya
+  base_amount NUMERIC(14,2) NOT NULL,                     -- sama dengan amount
+  tenant_fee  NUMERIC(14,2) NOT NULL,                     -- 2% dari base, 0 untuk data lama
+  total_tenant_payment NUMERIC(14,2) NOT NULL,            -- base + tenant_fee
+  owner_fee   NUMERIC(14,2) NOT NULL,                     -- 2% dari base, 0 saat promo
+  owner_net_payout NUMERIC(14,2) NOT NULL,                -- base - owner_fee
+  platform_gross_revenue NUMERIC(14,2) NOT NULL,          -- tenant_fee + owner_fee
   proof_url   TEXT,                                    -- kosong bila memakai Midtrans
   storage_key TEXT,
   status      VARCHAR(10) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','VERIFIED','REJECTED')),
@@ -180,10 +188,47 @@ CREATE TABLE maintenance_requests (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE chat_rooms (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  tenant_id   UUID REFERENCES users(id) ON DELETE CASCADE,
+  type        VARCHAR(10) NOT NULL CHECK (type IN ('direct','group')),
+  name        VARCHAR(120),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE chat_members (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id      UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  role         VARCHAR(10) NOT NULL CHECK (role IN ('owner','tenant')),
+  room_badge   VARCHAR(40),                           -- 'Owner', 'Kamar 04', atau 'Calon Penyewa'
+  booking_id   UUID REFERENCES bookings(id) ON DELETE SET NULL,
+  is_active    BOOLEAN NOT NULL DEFAULT true,
+  last_read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  joined_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE chat_messages (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id           UUID NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  sender_id         UUID REFERENCES users(id) ON DELETE SET NULL,  -- NULL untuk pesan sistem
+  content           TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 2000),
+  is_system_message BOOLEAN NOT NULL DEFAULT false,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ----------------------------------------------------------------------------
 -- Index minimal. Tanpa ini daftar properti dan pencarian kamar akan memindai
 -- seluruh tabel begitu data bertambah.
 -- ----------------------------------------------------------------------------
+CREATE UNIQUE INDEX idx_chat_group_property ON chat_rooms (property_id) WHERE type = 'group';
+CREATE UNIQUE INDEX idx_chat_direct_property_tenant ON chat_rooms (property_id, tenant_id) WHERE type = 'direct';
+CREATE UNIQUE INDEX idx_chat_member_unique ON chat_members (room_id, user_id);
+CREATE INDEX idx_chat_member_user ON chat_members (user_id, is_active);
+CREATE INDEX idx_chat_member_booking ON chat_members (booking_id);
+CREATE INDEX idx_chat_message_room ON chat_messages (room_id, created_at);
+
 CREATE INDEX idx_properties_owner_id ON properties (owner_id);
 CREATE INDEX idx_properties_verification_city ON properties (verification_status, city);
 CREATE INDEX idx_rooms_property_id ON rooms (property_id);
