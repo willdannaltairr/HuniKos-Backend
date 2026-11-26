@@ -3,6 +3,7 @@ import { conflict, notFound } from '../../utils/HttpError.js'
 import { deleteFile, saveFile } from '../../utils/storage.js'
 import { assertRealImage } from '../../middlewares/upload.js'
 import { attachCoverImages } from '../properties/properties.service.js'
+import { ensureGroupForProperty } from '../../utils/chatHooks.js'
 import type { VerificationStatus } from '../../types/domain.js'
 
 /** Bentuk PropertyItem untuk daftar milik pemilik, lengkap dengan field detail. */
@@ -18,6 +19,7 @@ export interface OwnerPropertyItem {
   longitude: number | null
   verification_status: VerificationStatus
   rejection_note: string | null
+  is_owner_promo: boolean
   created_at: Date
   min_price: number | null
   available_rooms: number
@@ -41,7 +43,7 @@ export async function listOwnerProperties(ownerId: string): Promise<OwnerPropert
   const { rows } = await query<OwnerPropertyItem>(
     `SELECT p.id, p.name, p.city, p.address, p.property_type,
             p.description, p.rules, p.latitude, p.longitude,
-            p.verification_status, p.rejection_note, p.created_at,
+            p.verification_status, p.rejection_note, p.is_owner_promo, p.created_at,
             MIN(r.monthly_price) FILTER (WHERE r.status <> 'INACTIVE') AS min_price,
             COUNT(*) FILTER (WHERE r.status = 'AVAILABLE')::int AS available_rooms,
             COUNT(*) FILTER (WHERE r.status <> 'INACTIVE')::int AS total_rooms
@@ -56,17 +58,23 @@ export async function listOwnerProperties(ownerId: string): Promise<OwnerPropert
 }
 
 export async function createProperty(ownerId: string, input: PropertyInput) {
-  const { rows } = await query(
-    `INSERT INTO properties
-       (owner_id, name, description, address, city, latitude, longitude, property_type, rules)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING *`,
-    [
-      ownerId, input.name, input.description ?? null, input.address, input.city,
-      input.latitude ?? null, input.longitude ?? null, input.property_type, input.rules ?? null,
-    ],
-  )
-  return rows[0]
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `INSERT INTO properties
+         (owner_id, name, description, address, city, latitude, longitude, property_type, rules)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        ownerId, input.name, input.description ?? null, input.address, input.city,
+        input.latitude ?? null, input.longitude ?? null, input.property_type, input.rules ?? null,
+      ],
+    )
+    const property = rows[0]
+    // Grup penghuni dibuat bersamaan dengan kos, sehingga pemilik langsung
+    // menjadi admin grup tanpa menunggu ada penyewa pertama.
+    await ensureGroupForProperty(client, property.id, ownerId)
+    return property
+  })
 }
 
 // Properti yang sebelumnya ditolak kembali ke antrean verifikasi saat diperbaiki.

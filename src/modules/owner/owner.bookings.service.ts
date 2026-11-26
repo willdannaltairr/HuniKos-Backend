@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg'
 import { withTransaction } from '../../config/db.js'
 import { conflict, notFound } from '../../utils/HttpError.js'
 import { expireStaleBookings, syncRoomStatus } from '../../utils/bookingRules.js'
+import { deactivateBookingMember } from '../../utils/chatHooks.js'
 import { BOOKING_SELECT, toBooking } from '../bookings/bookings.service.js'
 import type { Booking, BookingRow } from '../bookings/bookings.service.js'
 
@@ -95,6 +96,8 @@ export async function completeBooking(ownerId: string, bookingId: string): Promi
     )
     await recordHistory(client, bookingId, 'CONFIRMED', 'COMPLETED', ownerId, 'Masa sewa selesai')
     await syncRoomStatus(client, booking.room_id)
+    // Sewa selesai: anggota tidak lagi perlu mengakses grup obrolan booking.
+    await deactivateBookingMember(client, bookingId)
 
     const { rows } = await client.query<BookingRow>(`${BOOKING_SELECT} WHERE b.id = $1`, [bookingId])
     return toBooking(rows[0] as BookingRow)

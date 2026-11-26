@@ -14,6 +14,7 @@ import facilityRoutes from './modules/facilities/facilities.routes.js'
 import propertyRoutes from './modules/properties/properties.routes.js'
 import roomRoutes from './modules/rooms/rooms.routes.js'
 import bookingRoutes from './modules/bookings/bookings.routes.js'
+import chatRoutes from './modules/chat/chat.routes.js'
 import maintenanceRoutes from './modules/maintenance/maintenance.routes.js'
 import { tenantPaymentRouter, tenantPaymentListRouter } from './modules/payments/payments.routes.js'
 import { midtransNotificationRouter, midtransRouter } from './modules/payments/midtrans.routes.js'
@@ -72,6 +73,7 @@ export function createApp() {
   app.use('/api/bookings', midtransRouter)
   app.use('/api/midtrans', midtransNotificationRouter)
   app.use('/api/payments', tenantPaymentListRouter)
+  app.use('/api/chat', chatRoutes)
   app.use('/api/maintenance', maintenanceRoutes)
   app.use('/api/owner', ownerRoutes)
   app.use('/api/admin', adminRoutes)
