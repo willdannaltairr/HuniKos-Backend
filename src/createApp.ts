@@ -23,6 +23,12 @@ import adminRoutes from './modules/admin/admin.routes.js'
 export function createApp() {
   const app = express()
 
+  // Di Vercel, request tiba lewat proxy sehingga IP pengguna hanya ada di
+  // X-Forwarded-For. Tanpa ini express-rate-limit menghitung per IP proxy,
+  // artinya 10 percobaan login dari siapa pun mengunci semua orang.
+  // Satu hop dipercaya karena hanya proxy platform yang ada di depannya.
+  if (env.isProduction) app.set('trust proxy', 1)
+
   // Gambar dimuat oleh website dan aplikasi mobile dari domain lain.
   // Cast dipakai karena build Vercel me-resolve 'helmet' sebagai namespace, bukan fungsi
   // default; tanpa cast tsc gagal dengan TS2349 walau di lokal lolos.
