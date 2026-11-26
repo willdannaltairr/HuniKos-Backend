@@ -178,11 +178,11 @@ PORT=3100 LOGIN_RATE_LIMIT=200 npm start
 Panduan lengkap ada di [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md), dan database di
 [`docs/DEPLOY_AIVEN.md`](docs/DEPLOY_AIVEN.md). Ringkasnya:
 
-- Vercel **import repo GitHub**; Framework Preset *Other*, Root Directory dan Build Command
-  dikosongkan.
-- `index.ts` di root mengekspor aplikasi Express; Vercel mendeteksinya otomatis. `src/localServer.ts`
-  hanya dipakai di lokal.`src/app.ts` dan `src/server.ts` sengaja diganti nama supaya Vercel
-  tidak mengira keduanya sebagai entry Express kedua.
+- Vercel **import repo GitHub**; Framework Preset **Express** (juga ditulis di `vercel.json`),
+  Root Directory dan Build Command dikosongkan.
+- `index.ts` di root mengekspor aplikasi Express; Vercel mendeteksinya otomatis. `src/createApp.ts`
+  menyusun aplikasi dan `src/localServer.ts` hanya dipakai di lokal. Keduanya sengaja tidak
+  bernama `app.ts`/`server.ts`, karena Vercel menganggap nama itu entry Express kedua.
 - **Production Branch** di Vercel harus branch yang berisi kode ini (`develop`), bukan `main`
   yang isinya hanya dokumen. Ini penyebab paling sering muncul 404.
 - Health check path `/api/health`.
