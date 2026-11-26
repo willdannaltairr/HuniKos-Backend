@@ -14,6 +14,10 @@ export const accountStatusSchema = z.object({
   }),
 })
 
+export const promoSchema = z.object({
+  is_owner_promo: z.boolean(),
+})
+
 export const propertyReviewQuerySchema = z.object({
   verification_status: z
     .enum(['pending', 'approved', 'rejected'], {

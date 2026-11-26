@@ -9,7 +9,10 @@ import type { BookingStatus, Role } from '../../types/domain.js'
 export const BOOKING_SELECT = `
   SELECT b.id, b.booking_code, b.status, b.start_date, b.end_date, b.duration_months,
          b.rental_price_snapshot, b.total_amount, b.note, b.owner_note, b.expires_at,
-         b.created_at, b.tenant_id, b.room_id,
+         b.created_at, b.tenant_id, b.room_id, b.fee_applicable,
+         CASE WHEN b.fee_applicable THEN round(b.total_amount * 0.02, 0) ELSE 0 END AS tenant_fee,
+         b.total_amount + CASE WHEN b.fee_applicable THEN round(b.total_amount * 0.02, 0) ELSE 0 END
+           AS total_tenant_payment,
          json_build_object('id', r.id, 'room_number', r.room_number, 'room_type', r.room_type) AS room,
          json_build_object('id', p.id, 'name', p.name, 'city', p.city) AS property,
          json_build_object('id', u.id, 'full_name', u.full_name, 'phone_number', u.phone_number) AS tenant,
@@ -30,6 +33,9 @@ export interface BookingRow {
   duration_months: number
   rental_price_snapshot: number
   total_amount: number
+  fee_applicable: boolean
+  tenant_fee: number
+  total_tenant_payment: number
   note: string | null
   owner_note: string | null
   expires_at: Date | null
@@ -208,8 +214,9 @@ export async function createBooking(tenantId: string, input: CreateBookingInput)
         const inserted = await client.query<{ id: string }>(
           `INSERT INTO bookings
              (booking_code, tenant_id, room_id, start_date, duration_months, end_date,
-              rental_price_snapshot, total_amount, status, note)
-           VALUES ($1, $2, $3, $4::date, $5::int, $6::date, $7::numeric, $8::numeric, 'PENDING', $9)
+              rental_price_snapshot, total_amount, status, note, fee_applicable)
+           VALUES ($1, $2, $3, $4::date, $5::int, $6::date, $7::numeric, $8::numeric,
+                   'PENDING', $9, true)
            RETURNING id`,
           [
             makeBookingCode(), tenantId, kamar.id, input.start_date, input.duration_months,

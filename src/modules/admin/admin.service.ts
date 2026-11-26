@@ -2,6 +2,7 @@ import { query, withTransaction } from '../../config/db.js'
 import { conflict, forbidden, notFound } from '../../utils/HttpError.js'
 import { USER_COLUMNS } from '../auth/auth.service.js'
 import { attachCoverImages } from '../properties/properties.service.js'
+import { sumPlatformRevenueThisMonth } from '../payments/payments.service.js'
 import type { AccountStatus, Role, UserRow, VerificationStatus } from '../../types/domain.js'
 
 export interface AdminDashboard {
@@ -11,10 +12,11 @@ export interface AdminDashboard {
   total_properties: number
   pending_properties: number
   active_bookings: number
+  platform_gross_revenue: number
 }
 
 export async function getAdminDashboard(): Promise<AdminDashboard> {
-  const { rows } = await query<AdminDashboard>(
+  const { rows } = await query<Omit<AdminDashboard, 'platform_gross_revenue'>>(
     `SELECT
        (SELECT count(*)::int FROM users) AS total_users,
        (SELECT count(*)::int FROM users WHERE role = 'tenant') AS total_tenants,
@@ -23,7 +25,21 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
        (SELECT count(*)::int FROM properties WHERE verification_status = 'pending') AS pending_properties,
        (SELECT count(*)::int FROM bookings WHERE status = 'CONFIRMED') AS active_bookings`,
   )
-  return rows[0] as AdminDashboard
+  const revenue = await sumPlatformRevenueThisMonth()
+  return { ...rows[0], platform_gross_revenue: Number(revenue.platform_gross_revenue) }
+}
+
+// Promo pemilik menjadikan fee pemilik 0; statusnya diubah admin per properti.
+export async function setPropertyPromo(propertyId: string, isOwnerPromo: boolean) {
+  const { rows } = await query<{ id: string; name: string; is_owner_promo: boolean }>(
+    `UPDATE properties SET is_owner_promo = $2, updated_at = now()
+     WHERE id = $1
+     RETURNING id, name, is_owner_promo`,
+    [propertyId, isOwnerPromo],
+  )
+  const properti = rows[0]
+  if (!properti) throw notFound('Properti tidak ditemukan')
+  return properti
 }
 
 export interface UserListFilter {

@@ -4,6 +4,8 @@ import { query, withTransaction } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { conflict, HttpError, notFound } from '../../utils/HttpError.js'
 import { expireStaleBookings } from '../../utils/bookingRules.js'
+import { hitungFee } from '../../utils/fees.js'
+import { joinGroupOnPayment } from '../../utils/chatHooks.js'
 import { createSnapTransaction, getTransactionStatus } from '../../utils/midtrans.js'
 
 // Satu transaksi Midtrans = satu baris payments. Status akhir ditulis oleh
@@ -51,9 +53,16 @@ export async function createMidtransPayment(
       status: string
       expires_at: Date | null
       full_name: string
+      fee_applicable: boolean
+      is_owner_promo: boolean
+      property_id: string
     }>(
-      `SELECT b.booking_code, b.total_amount, b.status, b.expires_at, u.full_name
-       FROM bookings b JOIN users u ON u.id = b.tenant_id
+      `SELECT b.booking_code, b.total_amount, b.status, b.expires_at, u.full_name,
+              b.fee_applicable, p.is_owner_promo, p.id AS property_id
+       FROM bookings b
+       JOIN rooms r ON r.id = b.room_id
+       JOIN properties p ON p.id = r.property_id
+       JOIN users u ON u.id = b.tenant_id
        WHERE b.id = $1 AND b.tenant_id = $2 FOR UPDATE OF b`,
       [bookingId, tenantId],
     )
@@ -65,6 +74,13 @@ export async function createMidtransPayment(
     if (booking.expires_at && booking.expires_at.getTime() <= Date.now()) {
       throw conflict('Batas waktu pembayaran sudah lewat')
     }
+
+    // Fee dihitung sekali saat payment dibuat supaya rinciannya tidak berubah
+    // bila status promo properti diubah admin di kemudian hari.
+    const fee = hitungFee(booking.total_amount, {
+      feeApplicable: booking.fee_applicable,
+      isOwnerPromo: booking.is_owner_promo,
+    })
 
     // Klik dua kali memakai token yang sama, bukan membuat order baru.
     const sudah = await client.query<{
@@ -85,7 +101,7 @@ export async function createMidtransPayment(
         paymentId: lama.id,
         orderId: lama.midtrans_order_id,
         bookingCode: booking.booking_code,
-        amount: booking.total_amount,
+        amount: fee.total_tenant_payment,
         customerName: booking.full_name,
         snapToken: lama.midtrans_snap_token,
         redirectUrl: lama.midtrans_redirect_url,
@@ -94,16 +110,22 @@ export async function createMidtransPayment(
 
     const orderId = `${booking.booking_code}-${randomBytes(3).toString('hex').toUpperCase()}`
     const inserted = await client.query<{ id: string }>(
-      `INSERT INTO payments (booking_id, amount, status, midtrans_order_id, note)
-       VALUES ($1, $2, 'PENDING', $3, 'Menunggu pembayaran Midtrans')
+      `INSERT INTO payments
+         (booking_id, amount, base_amount, tenant_fee, total_tenant_payment,
+          owner_fee, owner_net_payout, platform_gross_revenue,
+          status, midtrans_order_id, note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', $9, 'Menunggu pembayaran Midtrans')
        RETURNING id`,
-      [bookingId, booking.total_amount, orderId],
+      [
+        bookingId, booking.total_amount, fee.base_amount, fee.tenant_fee, fee.total_tenant_payment,
+        fee.owner_fee, fee.owner_net_payout, fee.platform_gross_revenue, orderId,
+      ],
     )
     return {
       paymentId: inserted.rows[0].id,
       orderId,
       bookingCode: booking.booking_code,
-      amount: booking.total_amount,
+      amount: fee.total_tenant_payment,
       customerName: booking.full_name,
       snapToken: null,
       redirectUrl: null,
@@ -123,6 +145,7 @@ export async function createMidtransPayment(
 
   let snap
   try {
+    // gross_amount Midtrans = total yang benar-benar dibayar penyewa, bukan base sewa.
     snap = await createSnapTransaction(draft.orderId, draft.amount, draft.customerName)
   } catch (error) {
     await query(
@@ -245,6 +268,9 @@ async function setLunas(
   await client.query(`UPDATE rooms SET status = 'OCCUPIED', updated_at = now() WHERE id = $1`, [
     roomId,
   ])
+
+  // Grup obrolan baru dipakai setelah pembayaran sah, bukan saat booking dibuat.
+  await joinGroupOnPayment(client, bookingId)
 }
 
 export async function orderIdForBooking(bookingId: string): Promise<string | null> {

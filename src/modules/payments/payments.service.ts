@@ -4,10 +4,14 @@ import { conflict, notFound } from '../../utils/HttpError.js'
 import { assertRealImage } from '../../middlewares/upload.js'
 import { saveFile } from '../../utils/storage.js'
 import { expireStaleBookings } from '../../utils/bookingRules.js'
+import { hitungFee } from '../../utils/fees.js'
+import { joinGroupOnPayment } from '../../utils/chatHooks.js'
 import type { PaymentStatus } from '../../types/domain.js'
 
 const PAYMENT_SELECT = `
-  SELECT pay.id, pay.booking_id, pay.amount, pay.proof_url, pay.status, pay.note,
+  SELECT pay.id, pay.booking_id, pay.amount, pay.base_amount, pay.tenant_fee,
+         pay.total_tenant_payment, pay.owner_fee, pay.owner_net_payout,
+         pay.platform_gross_revenue, pay.proof_url, pay.status, pay.note,
          pay.verified_at, pay.created_at, pay.midtrans_order_id,
          pay.midtrans_transaction_status, pay.midtrans_payment_type,
          b.booking_code, r.room_number, p.name AS property_name, u.full_name AS tenant_name
@@ -21,6 +25,12 @@ export interface Payment {
   id: string
   booking_id: string
   amount: number
+  base_amount: number
+  tenant_fee: number
+  total_tenant_payment: number
+  owner_fee: number
+  owner_net_payout: number
+  platform_gross_revenue: number
   proof_url: string
   status: PaymentStatus
   note: string | null
@@ -78,9 +88,17 @@ export async function uploadPaymentProof(
   return withTransaction(async (client) => {
     await expireStaleBookings(client)
 
-    const { rows } = await client.query<{ status: string; total_amount: number }>(
-      `SELECT status, total_amount FROM bookings
-       WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+    const { rows } = await client.query<{
+      status: string
+      total_amount: number
+      fee_applicable: boolean
+      is_owner_promo: boolean
+    }>(
+      `SELECT b.status, b.total_amount, b.fee_applicable, p.is_owner_promo
+       FROM bookings b
+       JOIN rooms r ON r.id = b.room_id
+       JOIN properties p ON p.id = r.property_id
+       WHERE b.id = $1 AND b.tenant_id = $2 FOR UPDATE OF b`,
       [bookingId, tenantId],
     )
     const booking = rows[0]
@@ -88,6 +106,13 @@ export async function uploadPaymentProof(
     if (booking.status !== 'AWAITING_PAYMENT') {
       throw conflict(`Booking berstatus ${booking.status} tidak menerima pembayaran`)
     }
+
+    // Booking lama tetap fee 0; besaran dihitung saat unggah agar tidak berubah
+    // bila status promi properti berubah setelah pembayaran dibuat.
+    const fee = hitungFee(booking.total_amount, {
+      feeApplicable: booking.fee_applicable,
+      isOwnerPromo: booking.is_owner_promo,
+    })
 
     const pending = await client.query(
       `SELECT 1 FROM payments WHERE booking_id = $1 AND status = 'PENDING' LIMIT 1`,
@@ -99,12 +124,17 @@ export async function uploadPaymentProof(
 
     const saved = await saveFile(file.buffer, 'proofs', detected.ext)
 
-    // Nominal selalu diambil dari booking, bukan dari client.
+    // amount tetap sewa dasar; total tagihan penyewa ada di kolom terpisah.
     const inserted = await client.query<{ id: string }>(
-      `INSERT INTO payments (booking_id, amount, proof_url, storage_key, status)
-       VALUES ($1, $2, $3, $4, 'PENDING')
+      `INSERT INTO payments
+         (booking_id, amount, base_amount, tenant_fee, total_tenant_payment,
+          owner_fee, owner_net_payout, platform_gross_revenue, proof_url, storage_key, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING')
        RETURNING id`,
-      [bookingId, booking.total_amount, saved.url, saved.key],
+      [
+        bookingId, booking.total_amount, fee.base_amount, fee.tenant_fee, fee.total_tenant_payment,
+        fee.owner_fee, fee.owner_net_payout, fee.platform_gross_revenue, saved.url, saved.key,
+      ],
     )
 
     const { rows: paymentRows } = await client.query<Payment>(
@@ -211,12 +241,16 @@ async function approvePayment(
     payment.room_id,
     'OCCUPIED',
   ])
+
+  // Grup obrolan dibuka saat pembayaran disetujui, bukan saat booking dibuat.
+  await joinGroupOnPayment(client, payment.booking_id)
 }
 
-// Pendapatan bulan berjalan menurut zona Asia/Jakarta.
+// Pendapatan pemilik bulan berjalan menurut zona Asia/Jakarta: yang benar-benar
+// cair setelah fee platform, bukan tagihan penyewa.
 export async function sumRevenueThisMonth(ownerId: string): Promise<number> {
   const { rows } = await query<{ total: number }>(
-    `SELECT coalesce(sum(pay.amount), 0)::numeric AS total
+    `SELECT coalesce(sum(pay.owner_net_payout), 0)::numeric AS total
      FROM payments pay
      JOIN bookings b ON b.id = pay.booking_id
      JOIN rooms r ON r.id = b.room_id
@@ -227,4 +261,50 @@ export async function sumRevenueThisMonth(ownerId: string): Promise<number> {
     [ownerId],
   )
   return rows[0]?.total ?? 0
+}
+
+export type OwnerBreakdownThisMonth = {
+  gross_rental: number
+  platform_fee: number
+  net_payout: number
+}
+
+// Rincian pendapatan pemilik dipakai dashboard; payment VERIFIED yang dihitung.
+export async function sumOwnerBreakdownThisMonth(
+  ownerId: string,
+): Promise<OwnerBreakdownThisMonth> {
+  const { rows } = await query<OwnerBreakdownThisMonth>(
+    `SELECT coalesce(sum(pay.base_amount), 0)::numeric AS gross_rental,
+            coalesce(sum(pay.owner_fee), 0)::numeric AS platform_fee,
+            coalesce(sum(pay.owner_net_payout), 0)::numeric AS net_payout
+     FROM payments pay
+     JOIN bookings b ON b.id = pay.booking_id
+     JOIN rooms r ON r.id = b.room_id
+     JOIN properties p ON p.id = r.property_id
+     WHERE p.owner_id = $1 AND pay.status = 'VERIFIED'
+       AND (pay.verified_at AT TIME ZONE 'Asia/Jakarta')::date
+           >= date_trunc('month', (now() AT TIME ZONE 'Asia/Jakarta')::date)::date`,
+    [ownerId],
+  )
+  return rows[0] as OwnerBreakdownThisMonth
+}
+
+export type PlatformRevenueThisMonth = {
+  gross_rental: number
+  platform_fee: number
+  platform_gross_revenue: number
+}
+
+// Gross revenue platform = fee penyewa + fee pemilik dari transaksi terverifikasi.
+export async function sumPlatformRevenueThisMonth(): Promise<PlatformRevenueThisMonth> {
+  const { rows } = await query<PlatformRevenueThisMonth>(
+    `SELECT coalesce(sum(pay.base_amount), 0)::numeric AS gross_rental,
+            coalesce(sum(pay.owner_fee), 0)::numeric AS platform_fee,
+            coalesce(sum(pay.platform_gross_revenue), 0)::numeric AS platform_gross_revenue
+     FROM payments pay
+     WHERE pay.status = 'VERIFIED'
+       AND (pay.verified_at AT TIME ZONE 'Asia/Jakarta')::date
+           >= date_trunc('month', (now() AT TIME ZONE 'Asia/Jakarta')::date)::date`,
+  )
+  return rows[0] as PlatformRevenueThisMonth
 }

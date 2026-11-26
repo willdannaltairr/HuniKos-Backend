@@ -1,6 +1,6 @@
 import { query, withTransaction } from '../../config/db.js'
 import { expireStaleBookings } from '../../utils/bookingRules.js'
-import { sumRevenueThisMonth } from '../payments/payments.service.js'
+import { sumOwnerBreakdownThisMonth } from '../payments/payments.service.js'
 
 export interface OwnerDashboard {
   total_properties: number
@@ -11,7 +11,11 @@ export interface OwnerDashboard {
   pending_bookings: number
   pending_payments: number
   open_maintenance: number
+  //Kompatibel dengan klien lama: angka ini sekarang memakai net payout.
   revenue_this_month: number
+  gross_rental_this_month: number
+  platform_fee_this_month: number
+  net_payout_this_month: number
   occupancy_rate: number
 }
 
@@ -45,11 +49,25 @@ export async function getOwnerDashboard(ownerId: string): Promise<OwnerDashboard
     [ownerId],
   )
 
-  const stats = rows[0] as Omit<OwnerDashboard, 'revenue_this_month' | 'occupancy_rate'>
-  const revenue = await sumRevenueThisMonth(ownerId)
+  const stats = rows[0] as Omit<
+    OwnerDashboard,
+    | 'revenue_this_month'
+    | 'gross_rental_this_month'
+    | 'platform_fee_this_month'
+    | 'net_payout_this_month'
+    | 'occupancy_rate'
+  >
+  const revenue = await sumOwnerBreakdownThisMonth(ownerId)
   // Persentase kamar terisi, satu angka di belakang koma.
   const occupancy =
     stats.total_rooms === 0 ? 0 : Math.round((stats.occupied_rooms / stats.total_rooms) * 1000) / 10
 
-  return { ...stats, revenue_this_month: Number(revenue), occupancy_rate: occupancy }
+  return {
+    ...stats,
+    revenue_this_month: Number(revenue.net_payout),
+    gross_rental_this_month: Number(revenue.gross_rental),
+    platform_fee_this_month: Number(revenue.platform_fee),
+    net_payout_this_month: Number(revenue.net_payout),
+    occupancy_rate: occupancy,
+  }
 }
