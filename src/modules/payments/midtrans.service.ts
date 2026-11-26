@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { PoolClient } from 'pg'
 import { query, withTransaction } from '../../config/db.js'
 import { env } from '../../config/env.js'
-import { conflict, notFound } from '../../utils/HttpError.js'
+import { conflict, HttpError, notFound } from '../../utils/HttpError.js'
 import { expireStaleBookings } from '../../utils/bookingRules.js'
 import { createSnapTransaction, getTransactionStatus } from '../../utils/midtrans.js'
 
@@ -32,7 +32,15 @@ export async function createMidtransPayment(
   tenantId: string,
   bookingId: string,
 ): Promise<SnapPaymentResponse> {
-  if (!env.midtrans.serverKey) throw new Error('MIDTRANS_SERVER_KEY belum diisi')
+  // Tanpa kunci, Midtrans tidak bisa membuat transaksi apa pun. Dijawab 503
+  // dengan alasan yang bisa dibaca pengguna, bukan 500 generik yang membuat
+  // orang mengira aplikasinya rusak.
+  if (!env.midtrans.serverKey) {
+    throw new HttpError(
+      503,
+      'Pembayaran Midtrans belum aktif di server ini. Gunakan unggah bukti transfer, atau hubungi pemilik kos.',
+    )
+  }
 
   const draft = await withTransaction(async (client) => {
     await expireStaleBookings(client)
