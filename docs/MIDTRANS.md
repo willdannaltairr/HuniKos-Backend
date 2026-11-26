@@ -1,7 +1,22 @@
 # Pembayaran Midtrans Snap
 
-HuniKos memakai Midtrans Snap sebagai satu-satunya metode pembayaran. Upload bukti
-transfer manual sudah tidak dipakai.
+HuniKos memakai Midtrans Snap sebagai metode pembayaran utama. Penyewa yang
+tidak memakai Midtrans tetap bisa membayar dengan **unggah bukti transfer**,
+yang diverifikasi pemilik. Keduanya bermuara pada status payment yang sama.
+
+## Dua host Midtrans yang berbeda
+
+| Keperluan | Sandbox | Produksi |
+|---|---|---|
+| Membuat transaksi Snap | `app.sandbox.midtrans.com` | `app.midtrans.com` |
+| Menanyakan status (`/v2/:order/status`) | `api.sandbox.midtrans.com` | `api.midtrans.com` |
+
+Endpoint status **tidak ada** di host `app.*`: permintaan ke
+`app.sandbox.midtrans.com/v2/.../status` dijawab 404. Karena 404 dibaca sebagai
+"transaksi belum punya status", kesalahan host ini tidak memunculkan error —
+pembayaran yang sudah settle hanya tidak pernah tersinkron, dan booking tetap
+`AWAITING_PAYMENT`. `src/utils/midtrans.ts` memisahkan `snapBaseUrl()` dan
+`coreApiBaseUrl()` supaya hal itu tidak terulang.
 
 ## Alur
 
@@ -63,8 +78,9 @@ sebagai header `X-Override-Notification` setiap kali transaksi dibuat, sehingga
 URL notifikasi tidak bergantung pada pengaturan di dashboard Midtrans.
 
 Kalau `MIDTRANS_SERVER_KEY` kosong, `POST /api/bookings/:id/payments/midtrans`
-menjawab **500** dengan pesan generik di klien; log function mencatat
-`MIDTRANS_SERVER_KEY belum diisi`. Endpoint lain tetap normal.
+menjawab **503** dengan pesan yang menyebut langkah berikutnya (pakai unggah
+bukti transfer). Penolakan dari Midtrans sendiri juga dipetakan ke 503; detail
+teknisnya hanya masuk log function. Endpoint lain tetap normal.
 
 ## Menjalankan migrasi
 
