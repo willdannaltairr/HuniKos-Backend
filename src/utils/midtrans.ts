@@ -14,8 +14,20 @@ type SnapBody = {
   transaction_status?: string
 }
 
-function baseUrl(): string {
-  return env.midtrans.isProduction ? 'https://app.midtrans.com' : 'https://app.sandbox.midtrans.com'
+// Snap dan Core API punya host berbeda. Snap dilayani di app.*, sedangkan
+// endpoint status (/v2/.../status) hanya ada di api.*. Menembak app.*/v2/...
+// dijawab 404, dan 404 dibaca sebagai "belum ada status", sehingga pembayaran
+// yang sudah settle tidak pernah tersinkron.
+function snapBaseUrl(): string {
+  return env.midtrans.isProduction
+    ? 'https://app.midtrans.com'
+    : 'https://app.sandbox.midtrans.com'
+}
+
+function coreApiBaseUrl(): string {
+  return env.midtrans.isProduction
+    ? 'https://api.midtrans.com'
+    : 'https://api.sandbox.midtrans.com'
 }
 
 function authorization(): string {
@@ -54,7 +66,7 @@ export async function createSnapTransaction(
     headers['X-Override-Notification'] = env.midtrans.notificationUrl
   }
 
-  const response = await fetch(`${baseUrl()}/snap/v1/transactions`, {
+  const response = await fetch(`${snapBaseUrl()}/snap/v1/transactions`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -90,7 +102,7 @@ export async function createSnapTransaction(
 // Transaksi Snap yang belum dipilih metode bayarnya belum punya status di Core
 // API dan menjawab 404 — itu wajar, dibaca sebagai "menunggu pembayaran".
 export async function getTransactionStatus(orderId: string): Promise<MidtransStatus | null> {
-  const response = await fetch(`${baseUrl()}/v2/${encodeURIComponent(orderId)}/status`, {
+  const response = await fetch(`${coreApiBaseUrl()}/v2/${encodeURIComponent(orderId)}/status`, {
     headers: { Accept: 'application/json', Authorization: authorization() },
   })
   if (response.status === 404) return null
