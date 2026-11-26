@@ -21,8 +21,28 @@
 | Hosting backend | Vercel | Deploy langsung dari repo GitHub, Express berjalan sebagai serverless function |
 | Hosting web | Vercel (website Next.js sudah ada) | Sesuai soal SRS |
 
-Bagian yang TIDAK masuk MVP (jangan dibuat): kontrak digital, invoice, payment gateway (Midtrans), Google Maps, email (Resend), Sentry, KosMatch, TrueCost, CampusRoute, KosVisit, Room Passport, review, chat, notifikasi, audit log.
-Pembayaran diganti **upload bukti transfer yang diverifikasi pemilik**.
+Bagian yang TIDAK masuk MVP (jangan dibuat): kontrak digital, Google Maps, email (Resend), Sentry, KosMatch, TrueCost, CampusRoute, KosVisit, Room Passport, review, notifikasi push, audit log.
+Payment gateway **Midtrans Snap** dan **chat** sudah ditambahkan kemudian atas permintaan pemilik proyek, jadi keduanya kini bagian dari sistem (lihat Lampiran A dan B di bawah).
+
+### Lampiran A — Biaya platform (Split Fee 2% + 2%)
+
+Berlaku untuk **booking baru** (`bookings.fee_applicable = true`). Booking/payment lama memakai fee `0` dan tidak ditagih tambahan.
+Semua nominal dibulatkan ke rupiah penuh di backend dengan `Math.round`; frontend tidak pernah mengirim total.
+
+| Field `payments` | Rumus |
+|---|---|
+| `base_amount` | `bookings.total_amount` (harga sewa murni) |
+| `tenant_fee` | `round(base_amount × 0.02)` |
+| `total_tenant_payment` | `base_amount + tenant_fee` — yang dibayar penyewa & dikirim ke Snap |
+| `owner_fee` | `round(base_amount × 0.02)`, atau `0` saat `properties.is_owner_promo = true` |
+| `owner_net_payout` | `base_amount - owner_fee` |
+| `platform_gross_revenue` | `tenant_fee + owner_fee` |
+
+`payments.amount` tetap sama dengan `base_amount` agar kontrak lama tidak rusak. `owner dashboard.revenue_this_month` kini memakai `owner_net_payout`, bukan `amount`. Admin menyalakan promo lewat `PATCH /api/admin/properties/:id/promo` dengan body `{ "is_owner_promo": bool }`.
+
+### Lampiran B — Chat
+
+Tiga tabel baru: `chat_rooms` (tipe `direct`/`group`, satu grup per properti), `chat_members` (`role` owner/tenant, `room_badge` seperti `Owner` / `Kamar 04` / `Calon Penyewa`, `is_active`, `last_read_at`), `chat_messages` (`is_system_message` untuk pesan otomatis). Akses dijaga di SQL lewat `chat_members.is_active = true`, bukan RLS (koneksi database memakai satu peran). Endpoint: `GET /api/chat/rooms`, `POST /api/chat/direct`, `GET|POST /api/chat/rooms/:id/messages`, `DELETE /api/chat/rooms/:id/messages/:messageId` (hanya owner). Saat pembayaran terverifikasi, penyewa otomatis join grup properti dengan badge nomor kamar + pesan sistem; saat booking `COMPLETED`, keanggotaan dinonaktifkan. Real-time memakai **polling 3 detik** karena Vercel serverless tidak bisa menjaga WebSocket.
 
 ---
 
